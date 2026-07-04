@@ -20,3 +20,6 @@ override.tf.json
 
 # OS / editor
 .DS_Store
+
+# Session handoff notes (not part of the published repo)
+.claude/HANDOFF.md
