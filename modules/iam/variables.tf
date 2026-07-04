@@ -40,28 +40,42 @@ variable "kms_key_arns" {
 # ECR repository ARNs for task_execution role to pull images
 variable "ecr_repository_arns" {
   type        = list(string)
-  description = "ECR repository ARNs; task_execution role can pull from these. When empty, the policy statement is omitted. TODO(scope): tightened in week 4 when container registry exists."
+  description = "ECR repository ARNs; task_execution role can pull from these. When empty, the policy statement is omitted. No-egress deployments must mirror the gateway image into a private ECR repository (public registries are unreachable) and pass its ARN here — see examples/minimal README."
   default     = []
 }
 
 # CloudWatch log group ARNs for task_execution role to write logs
 variable "log_group_arns" {
   type        = list(string)
-  description = "CloudWatch log group ARNs for ECS task logs. task_execution role can create streams and write events. When empty, the policy statement is omitted. TODO(scope): tightened in week 4 when log groups exist."
+  description = "CloudWatch log group ARNs for ECS task logs. task_execution role can create streams and write events. When empty, the policy statement is omitted. Supplied by ecs-llm-gateway (gateway log group)."
   default     = []
 }
 
-# Secrets Manager secret ARNs for task_execution and app_task roles
+# Secrets Manager secret ARNs injected at task start (execution role reads them)
 variable "secret_arns" {
   type        = list(string)
-  description = "Secrets Manager secret ARNs (e.g., gateway API keys). When empty, the policy statement is omitted. TODO(scope): populated when secrets are created."
+  description = "Secrets Manager secret ARNs the ECS agent injects at task start (container secrets valueFrom; e.g., the gateway master key). Read by the task execution role only. When empty, the policy statement is omitted."
+  default     = []
+}
+
+# Secrets Manager secret ARNs the application reads at runtime (app_task role)
+variable "app_secret_arns" {
+  type        = list(string)
+  description = "Secrets Manager secret ARNs the application code reads at runtime via GetSecretValue (e.g., third-party API keys). Read by the app_task role only — startup-injected secrets belong in secret_arns instead. When empty, the policy statement is omitted. TODO(scope): populated in week 5 if the RAG workload reads secrets at runtime."
+  default     = []
+}
+
+# SSM Parameter ARNs for ECS secrets valueFrom injection
+variable "ssm_parameter_arns" {
+  type        = list(string)
+  description = "SSM parameter ARNs the task execution role reads at container start (ECS secrets valueFrom). When empty, the statement is omitted. Supplied by ecs-llm-gateway (config parameter)."
   default     = []
 }
 
 # Bedrock model invocation for app_task role
 variable "bedrock_model_ids" {
   type        = list(string)
-  description = "List of Bedrock foundation model IDs (e.g., ['anthropic.claude-opus-20250219-v1:0']). ARNs are constructed as arn:{partition}:bedrock:{region}::foundation-model/{id}. When empty, the policy statement is omitted. TODO(scope): supplied by ecs-llm-gateway module in week 4."
+  description = "List of Bedrock foundation model IDs (e.g., ['anthropic.claude-sonnet-4-5-20250929-v1:0']). ARNs are constructed as arn:{partition}:bedrock:{region}::foundation-model/{id} (region wildcarded when inference profiles are supplied — cross-region profiles invoke destination-region models). When empty, the policy statement is omitted. Supplied by the composition (gateway model allowlist)."
   default     = []
 }
 
