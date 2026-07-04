@@ -7,6 +7,26 @@ no_egress = true
 # Standard mode: allows optional public subnets and NAT gateway
 # no_egress = false
 
-project     = "fedllm"
-environment = "dev"
-region      = "us-east-1"
+project                  = "fedllm"
+environment              = "dev"
+region                   = "us-east-1"
+
+# LiteLLM container image, digest-pinned. In no-egress mode the image MUST live in a
+# private ECR repository (public registries are unreachable) — mirror it first:
+#   aws ecr create-repository --repository-name litellm
+#   docker pull ghcr.io/berriai/litellm:main-stable
+#   docker tag ghcr.io/berriai/litellm:main-stable <account>.dkr.ecr.<region>.amazonaws.com/litellm:main-stable
+#   docker push <account>.dkr.ecr.<region>.amazonaws.com/litellm:main-stable
+# then pin the pushed digest:
+#   docker inspect --format='{{index .RepoDigests 0}}' <account>.dkr.ecr.<region>.amazonaws.com/litellm:main-stable
+# (placeholder digest below is syntactically valid but fake)
+gateway_container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+# ECR repositories the task execution role may pull from (the mirrored image's repo)
+ecr_repository_arns = ["arn:aws:ecr:us-east-1:123456789012:repository/litellm"]
+
+# Set to false and supply a real ACM certificate ARN for production
+create_self_signed_cert = true
+
+# Set to false (and apply) before terraform destroy
+gateway_deletion_protection = true

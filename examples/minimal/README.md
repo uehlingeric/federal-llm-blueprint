@@ -1,6 +1,6 @@
 # Minimal Example
 
-The smallest deployable slice of the blueprint. Demonstrates the network module in both no-egress and standard-private modes.
+The smallest deployable slice of the blueprint. Demonstrates KMS, network, IAM, and ECS LLM gateway wiring in both no-egress and standard-private modes.
 
 ## What This Deploys
 
@@ -9,6 +9,9 @@ The smallest deployable slice of the blueprint. Demonstrates the network module 
 - **VPC Endpoints** for Bedrock (runtime + agent), S3, ECR, CloudWatch Logs, KMS, Secrets Manager, ECS, and STS
 - **Security Groups** for application workloads and endpoint access
 - **VPC Flow Logs** encrypted with the KMS logs key
+- **IAM Roles** for task execution and app task, with permission boundary and scoped policies to gateway resources
+- **LLM Gateway** (ECS Fargate task) running LiteLLM, invoking Bedrock Claude models via internal ALB
+- **ALB Logs Stub** S3 bucket (temporary; replaced by document-store module in week 5)
 - **No-egress mode** (default): Zero Internet Gateways, zero NAT Gateways. All AWS service traffic routes through private VPC endpoints.
 - **Standard mode** (optional): Public subnets and optional NAT Gateway for standard private-VPC deployments with outbound internet access.
 
@@ -60,32 +63,125 @@ The smallest deployable slice of the blueprint. Demonstrates the network module 
 
 ## Prerequisites
 
-- AWS account with appropriate permissions (VPC, KMS, CloudWatch Logs, etc.)
+- AWS account with appropriate permissions (VPC, KMS, CloudWatch Logs, IAM, ECS, etc.)
 - Terraform >= 1.9.0
 - AWS CLI configured with credentials
-- **Not required**: Bedrock model access (until week 4)
+- **Bedrock model access must be enabled for the account/region** (Bedrock console → Model access) before anything works. This is a top support gotcha: enable the configured foundation model (Anthropic Claude Sonnet 4.5) before deploying. The example invokes it through the `us.` cross-region inference profile.
+- LiteLLM container image mirrored into private ECR and digest-pinned (see Configuration section below)
+- Docker CLI (for the mirror + digest-pin procedure)
+
+## Configuration
+
+### Container Image: Mirror to ECR, Then Pin
+
+In no-egress mode the VPC cannot reach public registries (ghcr.io, Docker Hub, public.ecr.aws), so the image **must** live in a private ECR repository, reached through the ECR VPC endpoints:
+
+```bash
+# 1. Create a private repository and mirror the image
+aws ecr create-repository --repository-name litellm
+aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+docker pull ghcr.io/berriai/litellm:main-stable
+docker tag ghcr.io/berriai/litellm:main-stable <account>.dkr.ecr.<region>.amazonaws.com/litellm:main-stable
+docker push <account>.dkr.ecr.<region>.amazonaws.com/litellm:main-stable
+
+# 2. Pin the PUSHED digest (a pull/push cycle can rewrite the manifest, changing the digest)
+docker inspect --format='{{index .RepoDigests 0}}' <account>.dkr.ecr.<region>.amazonaws.com/litellm:main-stable
+
+# 3. In terraform.tfvars: the pinned image, plus the repository ARN so the
+#    task execution role's pull permission scopes to exactly this repo
+gateway_container_image = "<account>.dkr.ecr.<region>.amazonaws.com/litellm@sha256:..."
+ecr_repository_arns     = ["arn:aws:ecr:<region>:<account>:repository/litellm"]
+```
+
+### Master Key Population
+
+After `terraform apply`, the gateway's master key secret (empty) must be populated:
+
+```bash
+# Get the secret ARN from outputs
+SECRET_ARN=$(terraform output -raw master_key_secret_arn)
+
+# Populate with a random key (or your own API key)
+aws secretsmanager put-secret-value \
+  --secret-id "$SECRET_ARN" \
+  --secret-string "sk_live_$(openssl rand -hex 20)"
+```
+
+(See docs/secrets-handling.md for the pattern and rationale.)
+
+### Self-Signed Certificate (Sandbox Only)
+
+By default, the ALB uses a self-signed certificate (SANDBOX ONLY). The private key lands in the Terraform state. For production:
+
+1. Provision an ACM certificate or use ACM PCA (private CA)
+2. Set `create_self_signed_cert = false` and supply `certificate_arn`
+3. Re-run `terraform apply`
 
 ## Cost
 
 This example provisions:
 - 1 VPC: ~$0/month
-- 2–3 private subnets: ~$0/month
+- 2 private subnets: ~$0/month
 - 10 interface VPC endpoints: ~$7–8/month each (biggest line item)
 - 1 S3 gateway endpoint: ~$0/month
-- VPC Flow Logs: minimal cost
+- 1 internal ALB: ~$16–18/month
+- 1 ECS Fargate task (1 vCPU, 2 GB memory): ~$30–35/month (while running; shut down when not in use)
 - 3 KMS CMKs (data, logs, secrets): ~$1/month each (~$3 total)
+- VPC Flow Logs: minimal cost
 
-**Estimated cost: ~$73–83/month** for the minimal example. The interface endpoints dominate; consider disabling unused endpoints via `var.interface_endpoints` to reduce cost during development.
+**Estimated cost: ~$120–150/month (roughly $4–5/day)** while the stack is up. The interface endpoints and Fargate task dominate. Disable deletion protection and run `terraform destroy` when not in use (see Destroy section below). These are list-price estimates; the measured-cost document arrives in week 8.
+
+### Cost Control in the LiteLLM Config
+
+The `litellm.yaml.tpl` contains two sandbox cost-control lines:
+
+```yaml
+litellm_settings:
+  # ... other settings ...
+  max_budget: 100.0         # Max USD per budget_duration
+  budget_duration: 30d      # Budget window
+```
+
+And per-model rate limiting:
+
+```yaml
+model_list:
+  - model_name: claude-sonnet-4-5
+    litellm_params:
+      # ... other params ...
+      rpm: 60                # Requests per minute
+```
+
+Adjust these in `litellm.yaml.tpl` before applying; the config lands in SSM Parameter Store and is injected into the task at launch.
+
+## Destroy
+
+Deletion protection is enabled on the gateway ALB by default (prevents accidental deletion). To destroy:
+
+1. Disable deletion protection:
+   ```bash
+   terraform apply -var 'gateway_deletion_protection=false'
+   ```
+   (Or set it in `terraform.tfvars`; default is `true`.)
+
+2. Destroy:
+   ```bash
+   terraform destroy
+   ```
 
 ## Known Gotchas
 
+- **Bedrock model access**: If the gateway task fails to start with a 403 or "User: arn:aws:iam::... is not authorized" error, check that Bedrock model access is enabled in the console (Bedrock → Model access) for the account/region.
 - **VPC Endpoint ENI cleanup**: Interface endpoints create elastic network interfaces that can take 30+ seconds to detach and delete during `terraform destroy`. If destroy times out, manually force-detach the ENIs in the AWS console.
+- **Master key not populated**: gateway tasks fail to launch (`ResourceInitializationError: unable to fetch secret`) until the master-key secret has a value. Populate it immediately after apply (see Configuration section above). If the deployment circuit breaker trips first (~10 failed launches), populate the secret and then force a new deployment: `aws ecs update-service --cluster <cluster> --service <service> --force-new-deployment`.
+- **Self-signed cert warning**: Browsers and clients connecting to the internal ALB will see a certificate mismatch. This is expected in sandbox mode. For production, use a private CA (ACM PCA) or a trusted internal CA.
 - **Bedrock availability**: Bedrock endpoints are not available in all AWS regions. In `us-east-1` (default), both Bedrock runtime and agent endpoints are available. In other regions, verify endpoint availability in the AWS documentation before deploying.
 
 ## Files
 
-- `main.tf`: KMS and network modules
-- `variables.tf`: Project, environment, region, mode toggle
-- `outputs.tf`: KMS and network module outputs
+- `main.tf`: KMS, network, IAM, ALB logs bucket, and gateway modules
+- `litellm.yaml.tpl`: LiteLLM configuration template (budget, rate limits, model mapping)
+- `variables.tf`: Project, environment, region, container image, certificate configuration
+- `outputs.tf`: KMS, network, IAM, and gateway module outputs
 - `versions.tf`: Provider requirements
 - `terraform.tfvars.example`: Example configuration
