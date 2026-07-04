@@ -42,8 +42,8 @@ run "custom_domain_backups" {
         via_services = ["logs"]
       }
       secrets = {
-        description  = "Secrets Manager secrets"
-        via_services = ["secretsmanager"]
+        description  = "Secrets Manager secrets and SSM SecureString parameters"
+        via_services = ["secretsmanager", "ssm"]
       }
       backups = {
         description  = "RDS backups and cross-region snapshots"

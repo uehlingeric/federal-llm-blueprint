@@ -16,9 +16,14 @@ locals {
   role_path = "/${var.project}/"
 
   # Bedrock model ARNs: constructed from model IDs + inference profiles
+  # When inference profiles are supplied, use region wildcard for foundation models
+  # (cross-region profiles invoke underlying models in destination regions; model ARNs
+  # carry no account ID so identity scope stays pinned to exact model IDs — region
+  # wildcard here does not widen which models can be invoked, only where they run)
+  bedrock_region_segment = length(var.bedrock_inference_profile_arns) > 0 ? "*" : data.aws_region.current.region
   bedrock_model_arns = [
     for id in var.bedrock_model_ids :
-    "arn:${data.aws_partition.current.partition}:bedrock:${data.aws_region.current.region}::foundation-model/${id}"
+    "arn:${data.aws_partition.current.partition}:bedrock:${local.bedrock_region_segment}::foundation-model/${id}"
   ]
   bedrock_all_arns = concat(local.bedrock_model_arns, var.bedrock_inference_profile_arns)
 
@@ -200,6 +205,17 @@ data "aws_iam_policy_document" "permission_boundary" {
     ]
     resources = ["*"]
     # boundary: Secrets Manager read-only (get secret and metadata). No create/delete/update.
+  }
+
+  statement {
+    sid    = "AllowSSMParameterRead"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters"
+    ]
+    resources = ["*"]
+    # boundary: Read-only parameter retrieval for ECS secret injection, scoped by identity policies to named parameters. No PutParameter/DeleteParameter (no write/delete ceiling).
   }
 
   statement {
@@ -524,9 +540,23 @@ data "aws_iam_policy_document" "task_execution" {
     }
   }
 
+  # SSM Parameter Store: retrieve configuration parameters
+  dynamic "statement" {
+    for_each = length(var.ssm_parameter_arns) > 0 ? [1] : []
+    content {
+      sid    = "SSMGetParameters"
+      effect = "Allow"
+      actions = [
+        "ssm:GetParameters"
+      ]
+      resources = var.ssm_parameter_arns
+      # task-execution: Retrieve SSM parameters at task startup (ECS secrets valueFrom injection). Scoped to specific parameter ARNs.
+    }
+  }
+
   # KMS: decrypt secrets
   dynamic "statement" {
-    for_each = contains(keys(var.kms_key_arns), "secrets") && length(var.secret_arns) > 0 ? [1] : []
+    for_each = contains(keys(var.kms_key_arns), "secrets") && (length(var.secret_arns) > 0 || length(var.ssm_parameter_arns) > 0) ? [1] : []
     content {
       sid    = "KMSDecryptSecrets"
       effect = "Allow"
@@ -539,9 +569,12 @@ data "aws_iam_policy_document" "task_execution" {
       condition {
         test     = "StringEquals"
         variable = "kms:ViaService"
-        values   = ["secretsmanager.${data.aws_region.current.region}.amazonaws.com"]
+        values = concat(
+          length(var.secret_arns) > 0 ? ["secretsmanager.${data.aws_region.current.region}.amazonaws.com"] : [],
+          length(var.ssm_parameter_arns) > 0 ? ["ssm.${data.aws_region.current.region}.amazonaws.com"] : []
+        )
       }
-      # task-execution: Decrypt secrets via Secrets Manager. ViaService condition ensures key is used only for this purpose.
+      # task-execution: Decrypt secrets via Secrets Manager and/or SecureString parameters via SSM. ViaService condition ensures key is used only for these purposes.
     }
   }
 }
@@ -693,9 +726,12 @@ data "aws_iam_policy_document" "app_task" {
     }
   }
 
-  # KMS: decrypt secrets (e.g., gateway credentials)
+  # KMS: decrypt secrets the application reads at runtime.
+  # Deliberately var.app_secret_arns, not var.secret_arns: startup-injected secrets
+  # (e.g., the gateway master key) are read by the execution role and arrive as env
+  # vars — the app process never calls GetSecretValue for them, so it gets no grant.
   dynamic "statement" {
-    for_each = contains(keys(var.kms_key_arns), "secrets") && length(var.secret_arns) > 0 ? [1] : []
+    for_each = contains(keys(var.kms_key_arns), "secrets") && length(var.app_secret_arns) > 0 ? [1] : []
     content {
       sid    = "KMSDecryptSecrets"
       effect = "Allow"
@@ -710,21 +746,21 @@ data "aws_iam_policy_document" "app_task" {
         variable = "kms:ViaService"
         values   = ["secretsmanager.${data.aws_region.current.region}.amazonaws.com"]
       }
-      # app-task: Decrypt secrets via Secrets Manager (e.g., third-party API keys in hybrid mode).
+      # app-task: Decrypt runtime-read secrets via Secrets Manager (e.g., third-party API keys in hybrid mode).
     }
   }
 
-  # Secrets Manager: retrieve secrets
+  # Secrets Manager: retrieve secrets the application reads at runtime
   dynamic "statement" {
-    for_each = length(var.secret_arns) > 0 ? [1] : []
+    for_each = length(var.app_secret_arns) > 0 ? [1] : []
     content {
       sid    = "SecretsManagerRead"
       effect = "Allow"
       actions = [
         "secretsmanager:GetSecretValue"
       ]
-      resources = var.secret_arns
-      # app-task: Retrieve secrets (e.g., external API keys, database credentials in some scenarios).
+      resources = var.app_secret_arns
+      # app-task: Retrieve runtime-read secrets (e.g., external API keys). Startup-injected secrets are excluded — see var.app_secret_arns.
     }
   }
 }

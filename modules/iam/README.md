@@ -49,13 +49,21 @@ Five Checkov checks (CKV_AWS_107, 108, 109, 111, 356) are skipped on the boundar
 
 ## Scope Markers
 
-This module includes `TODO(scope): ...` comments indicating where policies will be tightened as consumers (ecs-llm-gateway, vector-store, document-store) are built:
+This module includes `TODO(scope): ...` comments indicating where policies will be tightened as consumers (ecs-llm-gateway, vector-store, document-store) are built.
 
-- **ecr_repository_arns**: Defaulted to empty; scoped to container registry in week 4.
-- **log_group_arns**: Defaulted to empty; scoped to ECS log groups in week 4.
-- **bedrock_model_ids**: Defaulted to empty; supplied by ecs-llm-gateway in week 4.
+Resolved in week 4 (wired by `examples/minimal` to real gateway resources):
+
+- **log_group_arns**: scoped to the gateway's CloudWatch log group.
+- **secret_arns**: scoped to the gateway master-key secret (execution-role injection only — see `app_secret_arns` for the runtime-read split).
+- **ssm_parameter_arns**: scoped to the gateway's LiteLLM config parameter.
+- **bedrock_model_ids** / **bedrock_inference_profile_arns**: scoped to the gateway's model allowlist (foundation-model region is wildcarded only when cross-region inference profiles are supplied).
+- **ecr_repository_arns**: consumer-supplied; no-egress deployments mirror the gateway image into private ECR and pass the repository ARN (procedure in `examples/minimal/README.md`).
+
+Still open:
+
 - **db_resource_ids** / **db_usernames**: Defaulted to empty; supplied by vector-store in week 5.
 - **document_bucket_arns** / **document_bucket_read_prefixes**: Defaulted to empty; supplied by document-store in week 5.
+- **app_secret_arns**: Defaulted to empty; populated in week 5 if the RAG workload reads secrets at runtime.
 
 Empty-list statements are omitted via `dynamic` blocks (invalid policies with empty resource lists are prevented).
 
@@ -192,8 +200,9 @@ No modules.
 | ---- | ----------- | ---- | ------- | :------: |
 | environment | Deployment environment (dev, staging, prod) | `string` | n/a | yes |
 | project | Project name used in resource naming and tags | `string` | n/a | yes |
+| app\_secret\_arns | Secrets Manager secret ARNs the application code reads at runtime via GetSecretValue (e.g., third-party API keys). Read by the app\_task role only — startup-injected secrets belong in secret\_arns instead. When empty, the policy statement is omitted. TODO(scope): populated in week 5 if the RAG workload reads secrets at runtime. | `list(string)` | `[]` | no |
 | bedrock\_inference\_profile\_arns | Optional Bedrock inference profile ARNs for managed services. When empty, the policy statement is omitted. | `list(string)` | `[]` | no |
-| bedrock\_model\_ids | List of Bedrock foundation model IDs (e.g., ['anthropic.claude-opus-20250219-v1:0']). ARNs are constructed as arn:{partition}:bedrock:{region}::foundation-model/{id}. When empty, the policy statement is omitted. TODO(scope): supplied by ecs-llm-gateway module in week 4. | `list(string)` | `[]` | no |
+| bedrock\_model\_ids | List of Bedrock foundation model IDs (e.g., ['anthropic.claude-sonnet-4-5-20250929-v1:0']). ARNs are constructed as arn:{partition}:bedrock:{region}::foundation-model/{id} (region wildcarded when inference profiles are supplied — cross-region profiles invoke destination-region models). When empty, the policy statement is omitted. Supplied by the composition (gateway model allowlist). | `list(string)` | `[]` | no |
 | ci\_trust\_principal\_arns | ARNs of CI/CD principals (e.g., GitHub Actions OIDC role) that can assume the ci\_deploy role. When empty, the ci\_deploy role is not created (count = 0). | `list(string)` | `[]` | no |
 | data\_classification | Data classification level: public, internal, or cui | `string` | `"cui"` | no |
 | db\_resource\_ids | RDS resource IDs for IAM database authentication (e.g., ['db-ABCD1234']). Paired with db\_usernames to construct rds-db:connect ARNs. When empty, the policy statement is omitted. TODO(scope): supplied by vector-store module in week 5. | `list(string)` | `[]` | no |
@@ -201,11 +210,12 @@ No modules.
 | document\_bucket\_arns | S3 bucket ARNs for document store. app\_task role can list and get objects with scoped prefixes. When empty, the policy statement is omitted. TODO(scope): supplied by document-store module in week 5. | `list(string)` | `[]` | no |
 | document\_bucket\_read\_prefixes | S3 object prefixes within document buckets that app\_task can read (e.g., ['arn:aws:s3:::bucket/documents/*']). Full ARNs including prefix. When empty, the policy statement is omitted. | `list(string)` | `[]` | no |
 | document\_key\_prefixes | Bare S3 key prefixes (e.g., ['documents/']) used in the s3:prefix condition scoping ListBucket. Distinct from document\_bucket\_read\_prefixes, which are object ARNs. When empty, listing is scoped to the named buckets without a prefix condition. | `list(string)` | `[]` | no |
-| ecr\_repository\_arns | ECR repository ARNs; task\_execution role can pull from these. When empty, the policy statement is omitted. TODO(scope): tightened in week 4 when container registry exists. | `list(string)` | `[]` | no |
+| ecr\_repository\_arns | ECR repository ARNs; task\_execution role can pull from these. When empty, the policy statement is omitted. No-egress deployments must mirror the gateway image into a private ECR repository (public registries are unreachable) and pass its ARN here — see examples/minimal README. | `list(string)` | `[]` | no |
 | human\_trust\_principals | Map of role tier names (platform-admin, auditor, developer) to lists of trust principal ARNs (e.g., IdP role ARNs for SSO users). Example: { platform-admin = ["arn:aws:iam::...:role/Admin"], developer = ["arn:aws:iam::...:role/Dev"] }. Tiers not supplied are not created. Empty map → no human roles created. | `map(list(string))` | `{}` | no |
 | kms\_key\_arns | KMS key ARNs keyed by domain (data, logs, secrets). Used in IAM policies to scope key operations. | `map(string)` | `{}` | no |
-| log\_group\_arns | CloudWatch log group ARNs for ECS task logs. task\_execution role can create streams and write events. When empty, the policy statement is omitted. TODO(scope): tightened in week 4 when log groups exist. | `list(string)` | `[]` | no |
-| secret\_arns | Secrets Manager secret ARNs (e.g., gateway API keys). When empty, the policy statement is omitted. TODO(scope): populated when secrets are created. | `list(string)` | `[]` | no |
+| log\_group\_arns | CloudWatch log group ARNs for ECS task logs. task\_execution role can create streams and write events. When empty, the policy statement is omitted. Supplied by ecs-llm-gateway (gateway log group). | `list(string)` | `[]` | no |
+| secret\_arns | Secrets Manager secret ARNs the ECS agent injects at task start (container secrets valueFrom; e.g., the gateway master key). Read by the task execution role only. When empty, the policy statement is omitted. | `list(string)` | `[]` | no |
+| ssm\_parameter\_arns | SSM parameter ARNs the task execution role reads at container start (ECS secrets valueFrom). When empty, the statement is omitted. Supplied by ecs-llm-gateway (config parameter). | `list(string)` | `[]` | no |
 | tags | Additional tags applied to all taggable resources | `map(string)` | `{}` | no |
 
 ## Outputs

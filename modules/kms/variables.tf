@@ -46,8 +46,8 @@ variable "domains" {
       via_services = ["logs"]
     }
     secrets = {
-      description  = "Secrets Manager secrets"
-      via_services = ["secretsmanager"]
+      description  = "Secrets Manager secrets and SSM SecureString parameters"
+      via_services = ["secretsmanager", "ssm"]
     }
   }
 }
