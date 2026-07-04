@@ -74,10 +74,11 @@ jobs:
           ARCH=amd64
           TMPDIR=$(mktemp -d)
           cd "${TMPDIR}"
-          curl -sL "https://github.com/terraform-docs/terraform-docs/releases/download/${VERSION}/terraform-docs-${VERSION}-${OS}-${ARCH}.tar.gz" -o terraform-docs.tar.gz
+          TARBALL="terraform-docs-${VERSION}-${OS}-${ARCH}.tar.gz"
+          curl -sL "https://github.com/terraform-docs/terraform-docs/releases/download/${VERSION}/${TARBALL}" -o "${TARBALL}"
           curl -sL "https://github.com/terraform-docs/terraform-docs/releases/download/${VERSION}/terraform-docs-${VERSION}.sha256sum" -o checksums.txt
-          grep "terraform-docs-${VERSION}-${OS}-${ARCH}.tar.gz" checksums.txt | sha256sum --check
-          tar -xzf terraform-docs.tar.gz terraform-docs
+          grep "${TARBALL}" checksums.txt | sha256sum --check
+          tar -xzf "${TARBALL}" terraform-docs
           mkdir -p ~/.local/bin
           mv terraform-docs ~/.local/bin/
           export PATH="$HOME/.local/bin:$PATH"
