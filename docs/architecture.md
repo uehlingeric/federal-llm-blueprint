@@ -190,6 +190,9 @@ These output names are binding contracts: downstream modules consume them by nam
 | `service_name` | string | ECS service name |
 | `gateway_url` | string | Constructed gateway URL (https://{alb_dns_name}:443, for reference) |
 | `log_group_name` | string | CloudWatch log group name for gateway container logs |
+| `log_group_arn` | string | CloudWatch log group ARN (consumed by observability for alarm subscriptions) |
+| `master_key_secret_arn` | string | Secrets Manager secret ARN for gateway API master key (consumed by composition for IAM scoping) |
+| `config_parameter_arn` | string | SSM Parameter Store ARN for gateway LiteLLM config YAML (consumed by composition for IAM scoping) |
 
 ### vector-store module outputs
 
