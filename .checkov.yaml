@@ -1,0 +1,17 @@
+# Checkov policy for this repository.
+#
+# Skip policy: no repo-wide skip-check entries live in this file. Every skip is
+# an inline `#checkov:skip=CKV_XXX: <justification>` comment at the resource it
+# applies to, so the exception and its reasoning are reviewable together.
+directory:
+  - .
+framework:
+  - terraform
+download-external-modules: false
+skip-path:
+  - docs
+  - .git
+  - .github
+quiet: true
+compact: true
+summary-position: bottom
