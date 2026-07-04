@@ -23,3 +23,6 @@ override.tf.json
 
 # Session handoff notes (not part of the published repo)
 .claude/HANDOFF.md
+
+# Python
+__pycache__/
