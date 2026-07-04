@@ -4,10 +4,11 @@ The smallest deployable slice of the blueprint. Demonstrates the network module 
 
 ## What This Deploys
 
+- **KMS Keys** (data, logs, secrets domains) with automatic rotation, least-privilege policies, and partition-aware ARN construction
 - **VPC** with private-subnet architecture across 2 availability zones
 - **VPC Endpoints** for Bedrock (runtime + agent), S3, ECR, CloudWatch Logs, KMS, Secrets Manager, ECS, and STS
 - **Security Groups** for application workloads and endpoint access
-- **VPC Flow Logs** encrypted with a temporary KMS key (replaced by modules/kms in week 3)
+- **VPC Flow Logs** encrypted with the KMS logs key
 - **No-egress mode** (default): Zero Internet Gateways, zero NAT Gateways. All AWS service traffic routes through private VPC endpoints.
 - **Standard mode** (optional): Public subnets and optional NAT Gateway for standard private-VPC deployments with outbound internet access.
 
@@ -72,24 +73,19 @@ This example provisions:
 - 10 interface VPC endpoints: ~$7–8/month each (biggest line item)
 - 1 S3 gateway endpoint: ~$0/month
 - VPC Flow Logs: minimal cost
-- Temporary KMS key: ~$1/month (week 2 only; replaced by modules/kms in week 3)
+- 3 KMS CMKs (data, logs, secrets): ~$1/month each (~$3 total)
 
-**Estimated cost: ~$70–80/month** for the minimal example. The interface endpoints dominate; consider disabling unused endpoints via `var.interface_endpoints` to reduce cost during development.
+**Estimated cost: ~$73–83/month** for the minimal example. The interface endpoints dominate; consider disabling unused endpoints via `var.interface_endpoints` to reduce cost during development.
 
 ## Known Gotchas
 
 - **VPC Endpoint ENI cleanup**: Interface endpoints create elastic network interfaces that can take 30+ seconds to detach and delete during `terraform destroy`. If destroy times out, manually force-detach the ENIs in the AWS console.
 - **Bedrock availability**: Bedrock endpoints are not available in all AWS regions. In `us-east-1` (default), both Bedrock runtime and agent endpoints are available. In other regions, verify endpoint availability in the AWS documentation before deploying.
-- **Flow logs key policy**: The temporary KMS key in this example has a simple policy allowing the CloudWatch Logs service. In production (week 3), modules/kms provides a more comprehensive key policy.
 
 ## Files
 
-- `main.tf`: VPC and KMS key (temporary)
+- `main.tf`: KMS and network modules
 - `variables.tf`: Project, environment, region, mode toggle
-- `outputs.tf`: Network module outputs
+- `outputs.tf`: KMS and network module outputs
 - `versions.tf`: Provider requirements
 - `terraform.tfvars.example`: Example configuration
-
-## Next Week
-
-Week 3 introduces the KMS module. Replace the `aws_kms_key` resource in `main.tf` with a call to `module "kms"` that produces keys for data, logs, and secrets domains.

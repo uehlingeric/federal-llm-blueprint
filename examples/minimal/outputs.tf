@@ -1,3 +1,18 @@
+output "kms_key_arns" {
+  description = "KMS CMK ARNs from kms module"
+  value       = module.kms.key_arns
+}
+
+output "kms_key_ids" {
+  description = "KMS CMK IDs from kms module"
+  value       = module.kms.key_ids
+}
+
+output "kms_alias_arns" {
+  description = "KMS CMK alias ARNs from kms module"
+  value       = module.kms.alias_arns
+}
+
 output "vpc_id" {
   description = "VPC ID from network module"
   value       = module.network.vpc_id
