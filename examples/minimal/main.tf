@@ -1,7 +1,6 @@
 data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
-data "aws_elb_service_account" "main" {}
 
 provider "aws" {
   region = var.region
@@ -65,7 +64,55 @@ module "network" {
   }
 }
 
-# IAM module: roles and policies (week-3 TODO(scope) tightening — role policies now scope to the real gateway resources)
+# Document store module: S3 buckets for ALB logs, document storage, and access logs
+module "document_store" {
+  source = "../../modules/document-store"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  # Encryption: use the KMS data key for documents
+  data_kms_key_arn = module.kms.key_arns["data"]
+
+  # No object lock in sandbox (see module README for irreversibility warning)
+
+  tags = {
+    Example = "minimal"
+  }
+}
+
+# Vector store module: RDS pgvector database with encryption and IAM auth
+module "vector_store" {
+  source = "../../modules/vector-store"
+  #checkov:skip=CKV_AWS_157: Single-AZ is the documented minimal-demo cost trade-off (~half the RDS spend); the module default is multi_az = true and production compositions keep it.
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  # Network
+  vpc_id                = module.network.vpc_id
+  private_subnet_ids    = module.network.private_subnet_ids
+  app_security_group_id = module.network.app_security_group_id
+
+  # Encryption keys
+  data_kms_key_arn    = module.kms.key_arns["data"]
+  secrets_kms_key_arn = module.kms.key_arns["secrets"]
+  logs_kms_key_arn    = module.kms.key_arns["logs"]
+
+  # Single-AZ for demo; see module README for prod guidance
+  multi_az = false
+
+  # Set false (and apply) before terraform destroy
+  deletion_protection = var.vector_deletion_protection
+
+  tags = {
+    Example = "minimal"
+  }
+}
+
+# IAM module: roles and policies (week-5 TODO(scope) resolution — role policies now scope to the real gateway resources, vector store, and document store)
 module "iam" {
   source = "../../modules/iam"
 
@@ -80,113 +127,18 @@ module "iam" {
   bedrock_model_ids              = [local.bedrock_model_id]
   bedrock_inference_profile_arns = [local.bedrock_inference_profile_arn]
 
+  # Document store and vector store integration
+  document_bucket_arns          = [module.document_store.bucket_arns["documents"]]
+  document_bucket_read_prefixes = ["${module.document_store.bucket_arns["documents"]}/documents/*"]
+  document_key_prefixes         = ["documents/"]
+  db_resource_ids               = [module.vector_store.db_resource_id]
+  db_usernames                  = ["app_user"]
+
   tags = {
     Example = "minimal"
   }
 }
 
-# ALB logs S3 bucket (temporary stub — replaced by the document-store module in week 5)
-resource "aws_s3_bucket" "alb_logs" {
-  #checkov:skip=CKV_AWS_145: ELB access-log delivery supports ONLY SSE-S3; SSE-KMS (any key) is rejected by the log-delivery service. AWS platform constraint, not a shortcut.
-  #checkov:skip=CKV_AWS_18: Sandbox ALB access-log stub, replaced by the document-store module (with access logging) in week 5. Logging the log bucket adds no value for a stub.
-  #checkov:skip=CKV_AWS_144: Single-region sandbox stub; cross-region replication is a document-store (week 5) concern.
-  #checkov:skip=CKV2_AWS_62: No consumer for bucket event notifications; stub is replaced by the document-store module in week 5.
-  bucket = "${var.project}-${var.environment}-alb-logs-${data.aws_caller_identity.current.account_id}"
-
-  tags = {
-    Name    = "${var.project}-${var.environment}-alb-logs"
-    Example = "minimal"
-  }
-}
-
-resource "aws_s3_bucket_versioning" "alb_logs" {
-  bucket = aws_s3_bucket.alb_logs.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "alb_logs" {
-  bucket = aws_s3_bucket.alb_logs.id
-
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-# SSE-S3, deliberately not SSE-KMS: ELB access-log delivery rejects KMS-encrypted
-# destinations (AWS platform constraint) — see the CKV_AWS_145 skip on the bucket.
-resource "aws_s3_bucket_server_side_encryption_configuration" "alb_logs" {
-  bucket = aws_s3_bucket.alb_logs.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
-
-resource "aws_s3_bucket_lifecycle_configuration" "alb_logs" {
-  bucket = aws_s3_bucket.alb_logs.id
-
-  rule {
-    id     = "expire-alb-logs"
-    status = "Enabled"
-
-    expiration {
-      days = 90
-    }
-  }
-
-  rule {
-    id     = "abort-incomplete-multipart"
-    status = "Enabled"
-
-    abort_incomplete_multipart_upload {
-      days_after_initiation = 7
-    }
-  }
-}
-
-data "aws_iam_policy_document" "alb_logs" {
-  statement {
-    sid    = "AllowELBServicePutObject"
-    effect = "Allow"
-    principals {
-      type        = "AWS"
-      identifiers = [data.aws_elb_service_account.main.arn]
-    }
-    actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.alb_logs.arn}/alb/AWSLogs/${data.aws_caller_identity.current.account_id}/*"]
-  }
-
-  statement {
-    sid    = "DenyUnencryptedTransport"
-    effect = "Deny"
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-    actions = ["s3:*"]
-    resources = [
-      aws_s3_bucket.alb_logs.arn,
-      "${aws_s3_bucket.alb_logs.arn}/*"
-    ]
-
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "alb_logs" {
-  bucket = aws_s3_bucket.alb_logs.id
-  policy = data.aws_iam_policy_document.alb_logs.json
-}
 
 # ECS LLM Gateway module: Fargate service + internal ALB serving OpenAI-compatible
 # completions from Bedrock. The iam <-> gateway mutual references are resource-acyclic:
@@ -210,7 +162,7 @@ module "gateway" {
   config_yaml                = local.litellm_config
   certificate_arn            = var.certificate_arn
   create_self_signed_cert    = var.create_self_signed_cert
-  alb_logs_bucket_id         = aws_s3_bucket.alb_logs.id
+  alb_logs_bucket_id         = module.document_store.bucket_ids["alb-logs"]
   enable_deletion_protection = var.gateway_deletion_protection
 
   tags = {

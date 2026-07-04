@@ -28,5 +28,6 @@ ecr_repository_arns = ["arn:aws:ecr:us-east-1:123456789012:repository/litellm"]
 # Set to false and supply a real ACM certificate ARN for production
 create_self_signed_cert = true
 
-# Set to false (and apply) before terraform destroy
+# Set both to false (and apply) before terraform destroy
 gateway_deletion_protection = true
+vector_deletion_protection  = true

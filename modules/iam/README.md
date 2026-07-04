@@ -59,11 +59,14 @@ Resolved in week 4 (wired by `examples/minimal` to real gateway resources):
 - **bedrock_model_ids** / **bedrock_inference_profile_arns**: scoped to the gateway's model allowlist (foundation-model region is wildcarded only when cross-region inference profiles are supplied).
 - **ecr_repository_arns**: consumer-supplied; no-egress deployments mirror the gateway image into private ECR and pass the repository ARN (procedure in `examples/minimal/README.md`).
 
+Resolved in week 5 (wired by `examples/minimal` to real vector-store and document-store resources):
+
+- **db_resource_ids** / **db_usernames**: scoped to the vector-store instance (db_resource_id) and app_user (created by vector-store bootstrap SQL with GRANT rds_iam).
+- **document_bucket_arns** / **document_bucket_read_prefixes**: scoped to the documents bucket and documents/ prefix from the document-store module.
+
 Still open:
 
-- **db_resource_ids** / **db_usernames**: Defaulted to empty; supplied by vector-store in week 5.
-- **document_bucket_arns** / **document_bucket_read_prefixes**: Defaulted to empty; supplied by document-store in week 5.
-- **app_secret_arns**: Defaulted to empty; populated in week 5 if the RAG workload reads secrets at runtime.
+- **app_secret_arns**: Still empty after week 5 — the data plane uses IAM database auth (rds-db:connect), so the app role reads no runtime secrets. Populate only if a future workload needs one.
 
 Empty-list statements are omitted via `dynamic` blocks (invalid policies with empty resource lists are prevented).
 
