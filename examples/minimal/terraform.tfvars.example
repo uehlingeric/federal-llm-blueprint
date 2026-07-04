@@ -1,0 +1,12 @@
+# Minimal example configuration
+# Copy to terraform.tfvars and adjust as needed
+
+# No-egress mode (default): zero IGW/NAT, endpoint-only connectivity
+no_egress = true
+
+# Standard mode: allows optional public subnets and NAT gateway
+# no_egress = false
+
+project     = "fedllm"
+environment = "dev"
+region      = "us-east-1"

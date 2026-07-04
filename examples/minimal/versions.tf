@@ -7,4 +7,14 @@ terraform {
       version = "~> 6.0"
     }
   }
+
+  # Uncomment for remote state in production (week 8):
+  # backend "s3" {
+  #   bucket         = "fedllm-terraform-state"
+  #   key            = "minimal/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   encrypt        = true
+  #   dynamodb_table = "fedllm-terraform-locks"
+  #   use_lockfile   = true
+  # }
 }
