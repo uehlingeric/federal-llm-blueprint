@@ -94,7 +94,7 @@ CloudTrail with log-file validation, multi-region recording, and S3 + CloudWatch
 | **kms** | Customer-managed CMK set (data, logs, secrets domains), automatic rotation, least-privilege key policies, key grants for service integration, aliases. | 3 |
 | **iam** | Task execution role (image pull, logs write), app task role (database, S3, Bedrock scoped), CI deployment role, human role tiers (admin, auditor, developer), permission boundaries. | 3 |
 | **ecs-llm-gateway** | ECS Fargate cluster, hardened task definition (non-root, read-only FS, no privileged), LiteLLM container image (digest-pinned), internal ALB with TLS, health checks, autoscaling (CPU + request count). | 4 |
-| **vector-store** | RDS Postgres 16 with pgvector, encrypted storage, IAM authentication, Secrets Manager rotation, private subnet only, database security group rules. | 5 |
+| **vector-store** | RDS Postgres 16 with pgvector, encrypted storage (data CMK), IAM authentication, RDS-managed secret credential rotation (Secrets Manager, no custom Lambda), private subnet only, SG ingress 5432 from app SG only. | 5 |
 | **document-store** | S3 bucket set (documents, access-logs, alb-logs), versioning, SSE-KMS, public-access block, TLS-only bucket policy, lifecycle policies, optional object lock. | 5 |
 | **audit** | CloudTrail (multi-region, log-file validation, S3 + CloudWatch), AWS Config recorder, data event recording on document store, Config managed rules annotated to 800-53 controls. | 6 |
 | **observability** | Log-group factory (KMS mandatory, retention mandatory), alarm baseline (gateway 5xx/latency, ECS restarts, RDS vitals, endpoint health, Config drift), SNS topic, CloudWatch dashboard. | 6 |
@@ -200,9 +200,11 @@ These output names are binding contracts: downstream modules consume them by nam
 |-------------|------|-------------|
 | `db_endpoint` | string | RDS Postgres endpoint (hostname) |
 | `db_port` | number | Database port (5432) |
+| `db_instance_id` | string | RDS instance identifier (e.g., fedllm-dev-vector; used by waiters and ops tooling) |
+| `db_resource_id` | string | RDS DbiResourceId (consumed by iam module to construct rds-db:connect ARN scope) |
 | `db_security_group_id` | string | RDS security group ID |
 | `db_instance_arn` | string | RDS instance ARN |
-| `master_secret_arn` | string | Secrets Manager secret ARN for master credentials |
+| `master_secret_arn` | string | Secrets Manager secret ARN for master credentials (RDS-managed rotation) |
 | `db_name` | string | Database name (e.g., vectordb) |
 
 ### document-store module outputs
@@ -211,6 +213,7 @@ These output names are binding contracts: downstream modules consume them by nam
 |-------------|------|-------------|
 | `bucket_ids` | map(string) | S3 bucket IDs keyed by bucket type (documents, access-logs, alb-logs) |
 | `bucket_arns` | map(string) | S3 bucket ARNs keyed by bucket type |
+| `documents_bucket_regional_domain_name` | string | Regional domain name for documents bucket (e.g., bucket.s3.us-east-1.amazonaws.com; future consumers for direct S3 API calls) |
 
 ### audit module outputs
 
