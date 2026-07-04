@@ -1,6 +1,22 @@
+# Terraform
 .terraform/
-*.tfstate*
-*.tfvars
-.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
 crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+
+# Variable files may contain account-specific values; ship *.tfvars.example instead
+*.tfvars
+*.tfvars.json
+
+# Lock files are committed only in root modules (examples/), not in reusable modules
+.terraform.lock.hcl
+!examples/*/.terraform.lock.hcl
+
+# OS / editor
 .DS_Store
