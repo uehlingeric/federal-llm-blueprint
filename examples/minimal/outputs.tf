@@ -62,3 +62,58 @@ output "flow_log_group_name" {
   description = "Flow log CloudWatch group name from network module"
   value       = module.network.flow_log_group_name
 }
+
+output "task_execution_role_arn" {
+  description = "ECS task execution role ARN from iam module"
+  value       = module.iam.task_execution_role_arn
+}
+
+output "app_task_role_arn" {
+  description = "ECS app task role ARN from iam module"
+  value       = module.iam.app_task_role_arn
+}
+
+output "permission_boundary_arn" {
+  description = "Permission boundary policy ARN from iam module"
+  value       = module.iam.permission_boundary_arn
+}
+
+output "gateway_url" {
+  description = "LLM gateway URL from ecs-llm-gateway module"
+  value       = module.gateway.gateway_url
+}
+
+output "alb_dns_name" {
+  description = "Internal ALB DNS name from ecs-llm-gateway module"
+  value       = module.gateway.alb_dns_name
+}
+
+output "cluster_arn" {
+  description = "ECS cluster ARN from ecs-llm-gateway module"
+  value       = module.gateway.cluster_arn
+}
+
+output "service_name" {
+  description = "ECS service name from ecs-llm-gateway module"
+  value       = module.gateway.service_name
+}
+
+output "gateway_log_group_name" {
+  description = "CloudWatch log group name for gateway container logs from ecs-llm-gateway module"
+  value       = module.gateway.log_group_name
+}
+
+output "master_key_secret_arn" {
+  description = "Secrets Manager secret ARN for gateway master key from ecs-llm-gateway module"
+  value       = module.gateway.master_key_secret_arn
+}
+
+output "config_parameter_arn" {
+  description = "SSM parameter ARN for LiteLLM config from ecs-llm-gateway module"
+  value       = module.gateway.config_parameter_arn
+}
+
+output "alb_logs_bucket_id" {
+  description = "ALB access-logs stub bucket ID (replaced by document-store in week 5)"
+  value       = aws_s3_bucket.alb_logs.id
+}
