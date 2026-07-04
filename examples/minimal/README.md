@@ -9,9 +9,10 @@ The smallest deployable slice of the blueprint. Demonstrates KMS, network, IAM, 
 - **VPC Endpoints** for Bedrock (runtime + agent), S3, ECR, CloudWatch Logs, KMS, Secrets Manager, ECS, and STS
 - **Security Groups** for application workloads and endpoint access
 - **VPC Flow Logs** encrypted with the KMS logs key
-- **IAM Roles** for task execution and app task, with permission boundary and scoped policies to gateway resources
+- **IAM Roles** for task execution and app task, with permission boundary and scoped policies to gateway, vector store, and document store resources
 - **LLM Gateway** (ECS Fargate task) running LiteLLM, invoking Bedrock Claude models via internal ALB
-- **ALB Logs Stub** S3 bucket (temporary; replaced by document-store module in week 5)
+- **Document Store** (S3 bucket set): ALB logs, documents storage, and access logs with encryption and lifecycle policies
+- **Vector Store** (RDS pgvector): Single-AZ PostgreSQL database with pgvector extension, IAM database authentication, and encrypted storage
 - **No-egress mode** (default): Zero Internet Gateways, zero NAT Gateways. All AWS service traffic routes through private VPC endpoints.
 - **Standard mode** (optional): Public subnets and optional NAT Gateway for standard private-VPC deployments with outbound internet access.
 
@@ -117,6 +118,28 @@ By default, the ALB uses a self-signed certificate (SANDBOX ONLY). The private k
 2. Set `create_self_signed_cert = false` and supply `certificate_arn`
 3. Re-run `terraform apply`
 
+### Vector Store Bootstrap
+
+After `terraform apply`, the RDS pgvector database must be initialized with the application schema and bootstrap data:
+
+1. Retrieve the RDS master credentials from Secrets Manager:
+   ```bash
+   SECRET_ARN=$(terraform output -raw db_master_secret_arn)
+   aws secretsmanager get-secret-value --secret-id "$SECRET_ARN"
+   ```
+
+2. Run the pgvector bootstrap seed script (see `scripts/seed-vectors.py`) inside the VPC. The client task must run in the **app** security group — the database security group only admits traffic *from* the app SG; it is not a client-side group:
+   ```bash
+   # One-off ECS task in the cluster (requires Python 3.11+, psycopg[binary], boto3, numpy)
+   aws ecs run-task \
+     --cluster $(terraform output -raw cluster_arn | cut -d/ -f2) \
+     --task-definition <task-definition-family> \
+     --network-configuration "awsvpcConfiguration={subnets=[$(terraform output -json private_subnet_ids | jq -r '.[0]')],securityGroups=[$(terraform output -raw app_security_group_id)]}" \
+     --launch-type FARGATE
+   ```
+
+3. Verify the bootstrap succeeded per docs/verification/vector-proof.md.
+
 ## Cost
 
 This example provisions:
@@ -126,10 +149,13 @@ This example provisions:
 - 1 S3 gateway endpoint: ~$0/month
 - 1 internal ALB: ~$16–18/month
 - 1 ECS Fargate task (1 vCPU, 2 GB memory): ~$30–35/month (while running; shut down when not in use)
+- 1 RDS db.t4g.medium single-AZ PostgreSQL with pgvector: ~$60/month (~$2/day; second-biggest line item)
+- 1 RDS gp3 20 GB storage: ~$2.50/month
+- 3 S3 buckets (ALB logs, documents, access logs): ~$1/month
 - 3 KMS CMKs (data, logs, secrets): ~$1/month each (~$3 total)
 - VPC Flow Logs: minimal cost
 
-**Estimated cost: ~$120–150/month (roughly $4–5/day)** while the stack is up. The interface endpoints and Fargate task dominate. Disable deletion protection and run `terraform destroy` when not in use (see Destroy section below). These are list-price estimates; the measured-cost document arrives in week 8.
+**Estimated cost: ~$180–210/month (roughly $6–7/day)** while the stack is up. Interface endpoints, Fargate task, and RDS database dominate. Disable deletion protection and run `terraform destroy` when not in use (see Destroy section below). These are list-price estimates; the measured-cost document arrives in week 8.
 
 ### Cost Control in the LiteLLM Config
 
@@ -156,13 +182,13 @@ Adjust these in `litellm.yaml.tpl` before applying; the config lands in SSM Para
 
 ## Destroy
 
-Deletion protection is enabled on the gateway ALB by default (prevents accidental deletion). To destroy:
+Deletion protection is enabled on the gateway ALB and the vector-store RDS instance by default (prevents accidental deletion). To destroy:
 
-1. Disable deletion protection:
+1. Disable deletion protection on both:
    ```bash
-   terraform apply -var 'gateway_deletion_protection=false'
+   terraform apply -var 'gateway_deletion_protection=false' -var 'vector_deletion_protection=false'
    ```
-   (Or set it in `terraform.tfvars`; default is `true`.)
+   (Or set them in `terraform.tfvars`; defaults are `true`.)
 
 2. Destroy:
    ```bash
@@ -176,12 +202,16 @@ Deletion protection is enabled on the gateway ALB by default (prevents accidenta
 - **Master key not populated**: gateway tasks fail to launch (`ResourceInitializationError: unable to fetch secret`) until the master-key secret has a value. Populate it immediately after apply (see Configuration section above). If the deployment circuit breaker trips first (~10 failed launches), populate the secret and then force a new deployment: `aws ecs update-service --cluster <cluster> --service <service> --force-new-deployment`.
 - **Self-signed cert warning**: Browsers and clients connecting to the internal ALB will see a certificate mismatch. This is expected in sandbox mode. For production, use a private CA (ACM PCA) or a trusted internal CA.
 - **Bedrock availability**: Bedrock endpoints are not available in all AWS regions. In `us-east-1` (default), both Bedrock runtime and agent endpoints are available. In other regions, verify endpoint availability in the AWS documentation before deploying.
+- **RDS creation time**: The vector store database takes 10–15 minutes to become available after `terraform apply`. Check the AWS console (RDS → Databases) for the instance status.
+- **RDS deletion protection**: The vector store has deletion protection enabled by default (same pattern as the gateway ALB). To destroy, set `vector_deletion_protection = false` (alongside `gateway_deletion_protection = false`) and apply before `terraform destroy`. The final snapshot is named `{project}-{environment}-vector-final` and can be reviewed before deletion.
 
 ## Files
 
-- `main.tf`: KMS, network, IAM, ALB logs bucket, and gateway modules
+- `main.tf`: KMS, network, IAM, document-store, vector-store, gateway, and ALB modules
 - `litellm.yaml.tpl`: LiteLLM configuration template (budget, rate limits, model mapping)
 - `variables.tf`: Project, environment, region, container image, certificate configuration
-- `outputs.tf`: KMS, network, IAM, and gateway module outputs
+- `outputs.tf`: KMS, network, IAM, gateway, document-store, and vector-store module outputs
 - `versions.tf`: Provider requirements
 - `terraform.tfvars.example`: Example configuration
+- `../scripts/seed-vectors.py`: Proof-of-concept pgvector bootstrap and seed script
+- `../scripts/README.md`: Instructions for running the vector seed script in-VPC

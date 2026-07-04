@@ -114,6 +114,51 @@ output "config_parameter_arn" {
 }
 
 output "alb_logs_bucket_id" {
-  description = "ALB access-logs stub bucket ID (replaced by document-store in week 5)"
-  value       = aws_s3_bucket.alb_logs.id
+  description = "ALB access-logs bucket ID from document-store module"
+  value       = module.document_store.bucket_ids["alb-logs"]
+}
+
+output "document_bucket_ids" {
+  description = "Document store bucket IDs by purpose (alb-logs, documents, access-logs)"
+  value       = module.document_store.bucket_ids
+}
+
+output "document_bucket_arns" {
+  description = "Document store bucket ARNs by purpose"
+  value       = module.document_store.bucket_arns
+}
+
+output "db_endpoint" {
+  description = "RDS pgvector database endpoint from vector-store module"
+  value       = module.vector_store.db_endpoint
+}
+
+output "db_port" {
+  description = "RDS database port from vector-store module"
+  value       = module.vector_store.db_port
+}
+
+output "db_name" {
+  description = "RDS database name from vector-store module"
+  value       = module.vector_store.db_name
+}
+
+output "db_instance_id" {
+  description = "RDS instance identifier from vector-store module (used by waiters and ops tooling)"
+  value       = module.vector_store.db_instance_id
+}
+
+output "db_resource_id" {
+  description = "RDS resource ID (for IAM database auth) from vector-store module"
+  value       = module.vector_store.db_resource_id
+}
+
+output "db_master_secret_arn" {
+  description = "Secrets Manager secret ARN for RDS master credentials from vector-store module"
+  value       = module.vector_store.master_secret_arn
+}
+
+output "db_security_group_id" {
+  description = "Security group ID for RDS database from vector-store module"
+  value       = module.vector_store.db_security_group_id
 }

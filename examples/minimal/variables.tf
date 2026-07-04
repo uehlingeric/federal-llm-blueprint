@@ -55,3 +55,9 @@ variable "gateway_deletion_protection" {
   description = "Deletion protection on the gateway ALB. Set false and apply before terraform destroy (see README teardown procedure)."
   default     = true
 }
+
+variable "vector_deletion_protection" {
+  type        = bool
+  description = "Deletion protection on the vector-store RDS instance. Set false and apply before terraform destroy (see README teardown procedure)."
+  default     = true
+}
