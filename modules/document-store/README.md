@@ -166,6 +166,7 @@ No modules.
 | environment | Deployment environment (dev, staging, prod) | `string` | n/a | yes |
 | project | Project name used in resource naming and tags | `string` | n/a | yes |
 | abort\_incomplete\_multipart\_days | Number of days before aborting incomplete multipart uploads. Default 7 limits storage waste from failed uploads. | `number` | `7` | no |
+| additional\_logging\_prefixes | Additional access-logs bucket prefixes that S3 server-access-log delivery may write to, beyond the built-in 'documents' prefix. Compositions pass the target prefixes other modules use for aws\_s3\_bucket\_logging into this bucket (e.g. ["audit"] for the audit module's bucket logging). Bare prefix names without slashes. | `list(string)` | `[]` | no |
 | alb\_logs\_prefix | S3 prefix under which ELB/ALB writes access logs. Default 'alb'. Used to construct the bucket policy resource pattern for ELB log delivery. | `string` | `"alb"` | no |
 | data\_classification | Data classification level: public, internal, or cui | `string` | `"cui"` | no |
 | documents\_ia\_transition\_days | Number of days before transitioning documents from STANDARD to STANDARD\_IA storage class. Default 90 balances cost optimization against retrieval frequency. | `number` | `90` | no |

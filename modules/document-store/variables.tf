@@ -118,6 +118,17 @@ variable "alb_logs_prefix" {
   default     = "alb"
 }
 
+variable "additional_logging_prefixes" {
+  type        = list(string)
+  description = "Additional access-logs bucket prefixes that S3 server-access-log delivery may write to, beyond the built-in 'documents' prefix. Compositions pass the target prefixes other modules use for aws_s3_bucket_logging into this bucket (e.g. [\"audit\"] for the audit module's bucket logging). Bare prefix names without slashes."
+  default     = []
+
+  validation {
+    condition     = alltrue([for p in var.additional_logging_prefixes : can(regex("^[a-z0-9-]+$", p))])
+    error_message = "additional_logging_prefixes entries must be bare lowercase prefix names (letters, numbers, hyphens; no slashes)"
+  }
+}
+
 variable "enable_inventory" {
   type        = bool
   description = "Enable weekly CSV inventory of documents bucket contents. Inventory is written to access-logs bucket under 'inventory/' prefix. Useful for compliance audits and storage cost analysis. Default false."
