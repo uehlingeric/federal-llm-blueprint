@@ -160,7 +160,56 @@ run "defaults_alias_naming" {
   }
 }
 
-# Test 6: Outputs have expected keys
+# Test 6: Audit-plane service statements exist on the logs key policy only
+run "logs_key_policy_audit_plane_statements" {
+  command = plan
+
+  variables {
+    project     = "fedllm"
+    environment = "dev"
+  }
+
+  assert {
+    condition = alltrue([
+      for sid in ["AllowCloudWatchLogs", "AllowCloudTrailEncrypt", "AllowConfigDelivery", "AllowSnsAlarmPublishers", "AllowBedrockLogDelivery"] :
+      contains([for s in data.aws_iam_policy_document.key_policy["logs"].statement : s.sid], sid)
+    ])
+    error_message = "Logs key policy must carry the CloudWatch Logs, CloudTrail, Config, SNS-publisher, and Bedrock delivery statements"
+  }
+
+  assert {
+    condition = alltrue([
+      for domain in ["data", "secrets"] :
+      length([
+        for s in data.aws_iam_policy_document.key_policy[domain].statement :
+        s.sid if contains(["AllowCloudWatchLogs", "AllowCloudTrailEncrypt", "AllowConfigDelivery", "AllowSnsAlarmPublishers", "AllowBedrockLogDelivery"], s.sid)
+      ]) == 0
+    ])
+    error_message = "Audit-plane service statements must not leak onto the data or secrets key policies"
+  }
+
+  # The SNS-publisher grant is deliberately condition-free: the SNS developer
+  # guide documents no condition keys for the CloudWatch-alarms path and states
+  # source conditions are unsupported for EventBridge; undocumented conditions
+  # fail silently (alarms publish nothing).
+  assert {
+    condition = alltrue([
+      for s in data.aws_iam_policy_document.key_policy["logs"].statement :
+      length(s.condition) == 0 if s.sid == "AllowSnsAlarmPublishers"
+    ])
+    error_message = "AllowSnsAlarmPublishers must remain condition-free per the documented SNS event-source pattern"
+  }
+
+  assert {
+    condition = anytrue([
+      for s in data.aws_iam_policy_document.key_policy["logs"].statement :
+      anytrue([for c in s.condition : c.variable == "kms:EncryptionContext:aws:cloudtrail:arn"]) if s.sid == "AllowCloudTrailEncrypt"
+    ])
+    error_message = "AllowCloudTrailEncrypt must be gated on the aws:cloudtrail:arn encryption context"
+  }
+}
+
+# Test 7: Outputs have expected keys
 run "defaults_output_keys" {
   command = plan
 

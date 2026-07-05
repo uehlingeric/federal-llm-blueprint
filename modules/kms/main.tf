@@ -195,6 +195,137 @@ data "aws_iam_policy_document" "key_policy" {
       }
     }
   }
+
+  # Statement 5: CloudTrail log-file encryption (logs domain only)
+  # Per the CloudTrail KMS docs: GenerateDataKey* gated on the aws:cloudtrail:arn
+  # encryption context plus a SourceArn scoped to this account's trails in this
+  # region. The trail name is not known to this module, so the trail wildcard is
+  # the narrowest expressible scope.
+  dynamic "statement" {
+    for_each = each.key == "logs" ? [1] : []
+    content {
+      sid    = "AllowCloudTrailEncrypt"
+      effect = "Allow"
+
+      principals {
+        type        = "Service"
+        identifiers = ["cloudtrail.amazonaws.com"]
+      }
+
+      actions = [
+        "kms:GenerateDataKey*",
+        "kms:DescribeKey"
+      ]
+
+      resources = ["*"]
+
+      condition {
+        test     = "StringLike"
+        variable = "kms:EncryptionContext:aws:cloudtrail:arn"
+        values   = ["arn:${data.aws_partition.current.partition}:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"]
+      }
+
+      condition {
+        test     = "ArnLike"
+        variable = "aws:SourceArn"
+        values   = ["arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:trail/*"]
+      }
+    }
+  }
+
+  # Statement 6: AWS Config delivery-channel encryption (logs domain only)
+  # Per the AWS Config KMS docs: Decrypt + GenerateDataKey for the config service
+  # principal, gated on SourceAccount (Config uses its service-linked role; the
+  # key grant is expressed against the service principal).
+  dynamic "statement" {
+    for_each = each.key == "logs" ? [1] : []
+    content {
+      sid    = "AllowConfigDelivery"
+      effect = "Allow"
+
+      principals {
+        type        = "Service"
+        identifiers = ["config.amazonaws.com"]
+      }
+
+      actions = [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ]
+
+      resources = ["*"]
+
+      condition {
+        test     = "StringEquals"
+        variable = "AWS:SourceAccount"
+        values   = [data.aws_caller_identity.current.account_id]
+      }
+    }
+  }
+
+  # Statement 7: CloudWatch alarms and EventBridge publishing to the KMS-encrypted
+  # SNS alarm topic (logs domain only). The SNS developer guide's documented
+  # pattern for service event sources is GenerateDataKey* + Decrypt with NO
+  # source conditions; it explicitly states aws:SourceAccount/aws:SourceArn are
+  # NOT supported for EventBridge-to-encrypted-topic KMS calls, and documents no
+  # condition keys for the CloudWatch-alarms path. Adding undocumented conditions
+  # here fails silently (alarms publish nothing), so the grant is principal-locked
+  # only.
+  dynamic "statement" {
+    for_each = each.key == "logs" ? [1] : []
+    content {
+      sid    = "AllowSnsAlarmPublishers"
+      effect = "Allow"
+
+      principals {
+        type = "Service"
+        identifiers = [
+          "cloudwatch.amazonaws.com",
+          "events.amazonaws.com"
+        ]
+      }
+
+      actions = [
+        "kms:Decrypt",
+        "kms:GenerateDataKey*"
+      ]
+
+      resources = ["*"]
+    }
+  }
+
+  # Statement 8: Bedrock model-invocation log delivery to S3 (logs domain only).
+  # The audit bucket's default encryption is SSE-KMS with this key. Statement
+  # matches the Bedrock invocation-logging docs' SSE-KMS key policy verbatim:
+  # kms:GenerateDataKey with SourceAccount/SourceArn conditions.
+  dynamic "statement" {
+    for_each = each.key == "logs" ? [1] : []
+    content {
+      sid    = "AllowBedrockLogDelivery"
+      effect = "Allow"
+
+      principals {
+        type        = "Service"
+        identifiers = ["bedrock.amazonaws.com"]
+      }
+
+      actions = ["kms:GenerateDataKey"]
+
+      resources = ["*"]
+
+      condition {
+        test     = "StringEquals"
+        variable = "aws:SourceAccount"
+        values   = [data.aws_caller_identity.current.account_id]
+      }
+
+      condition {
+        test     = "ArnLike"
+        variable = "aws:SourceArn"
+        values   = ["arn:${data.aws_partition.current.partition}:bedrock:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*"]
+      }
+    }
+  }
 }
 
 # Per-domain KMS alias
