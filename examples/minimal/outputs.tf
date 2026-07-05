@@ -162,3 +162,38 @@ output "db_security_group_id" {
   description = "Security group ID for RDS database from vector-store module"
   value       = module.vector_store.db_security_group_id
 }
+
+output "trail_arn" {
+  description = "CloudTrail trail ARN from audit module"
+  value       = module.audit.trail_arn
+}
+
+output "audit_bucket_id" {
+  description = "Audit bucket ID (CloudTrail/Config/Bedrock log destination) from audit module"
+  value       = module.audit.audit_bucket_id
+}
+
+output "audit_log_group_name" {
+  description = "CloudTrail CloudWatch log group name from audit module"
+  value       = module.audit.audit_log_group_name
+}
+
+output "bedrock_log_group_name" {
+  description = "Bedrock model-invocation log group name from audit module"
+  value       = module.audit.bedrock_log_group_name
+}
+
+output "config_recorder_name" {
+  description = "AWS Config recorder name from audit module"
+  value       = module.audit.config_recorder_name
+}
+
+output "alarm_topic_arn" {
+  description = "SNS alarm topic ARN from observability module"
+  value       = module.observability.alarm_topic_arn
+}
+
+output "dashboard_name" {
+  description = "CloudWatch dashboard name from observability module"
+  value       = module.observability.dashboard_name
+}
