@@ -1,0 +1,911 @@
+# Machine-readable control mapping for NIST 800-53 rev5.
+# Mirrors CONTROLS.md; consumed by scripts/check-control-refs.py.
+# This YAML holds the same facts as the document; OSCAL component-definition
+# generation is roadmap - future work will generate OSCAL from this source.
+
+controls:
+  - id: AC-2
+    family: AC
+    title: Account Management
+    responsibility: stack
+    statement: >-
+      The Terraform stack defines a structured RBAC model with explicit principal
+      inventory: service roles (task_execution, app_task) assumed by ECS with
+      source-account conditions; an optional ci_deploy role trusting caller-supplied
+      IAM principal ARNs; human role tiers (platform-admin, auditor, developer)
+      assumed only with MFA; and a universal permission boundary that prevents
+      escalation. Every role carries mandatory tags for auditability. No local users
+      or direct credential creation (iam:*AccessKey*, iam:*LoginProfile*) is
+      permitted by the boundary.
+    resources:
+      - path: docs/rbac-model.md
+        note: Principals inventory (section 1) and role assumption paths (section 3)
+      - path: modules/iam/main.tf
+        resource: aws_iam_policy.permission_boundary
+        note: "Explicit deny on iam:*AccessKey*, iam:*LoginProfile*; prevents local-user and direct-credential patterns"
+      - path: modules/iam/main.tf
+        resource: aws_iam_role.task_execution
+        note: Service role assumed by ECS with SourceAccount condition
+      - path: modules/iam/main.tf
+        resource: aws_iam_role.app_task
+        note: Service role assumed by ECS with SourceAccount condition
+      - path: modules/iam/main.tf
+        resource: aws_iam_role.human_tier
+        note: Human role tiers (for_each over platform-admin, auditor, developer) with MFA trust condition
+      - path: modules/iam/main.tf
+        resource: aws_iam_role.ci_deploy
+        note: Optional CI role trusting caller-supplied IAM principal ARNs
+    gaps: >-
+      Customer is responsible for: configuring the IdP or AWS Identity Center
+      for human federation; managing MFA device enrollment; auditing actual role
+      assumption attempts in CloudTrail to detect policy-bypass attempts. The stack
+      enforces structure; the deployer enforces discipline.
+
+  - id: AC-3
+    family: AC
+    title: Access Enforcement
+    responsibility: stack
+    statement: >-
+      Access control is enforced via layered mechanisms: IAM role-policy pairs
+      scoped to least-privilege resource ARNs, security groups constraining traffic
+      (gateway service SG accepts the ALB only; database SG accepts the app SG only),
+      S3 bucket policies denying unencrypted transport and restricting object
+      access, RDS private-subnet isolation with security-group ingress from app tier
+      only, and the S3 gateway endpoint policy restricting access to in-account
+      buckets. The permission boundary intersects with all identity policies, capping
+      the maximum allowed scope. Data plane access (S3, RDS, Secrets Manager, KMS)
+      is resource-scoped per role (e.g., app_task reads documents from specified
+      prefix, connects to named database users, invokes named Bedrock models).
+    resources:
+      - path: docs/rbac-model.md
+        note: RBAC matrix (section 2) defines resource scope and conditions per principal
+      - path: modules/iam/main.tf
+        resource: aws_iam_policy.permission_boundary
+        note: Ceiling policy; intersected with all identity policies
+      - path: modules/iam/main.tf
+        resource: aws_iam_role_policy.app_task
+        note: App task role identity policy with resource ARN scoping
+      - path: modules/iam/main.tf
+        resource: aws_iam_role_policy.task_execution
+        note: Task execution role with ECR, Secrets Manager, CloudWatch Logs scoping
+      - path: modules/network/security-groups.tf
+        resource: aws_security_group.app
+        note: Workload SG; egress-only (443 to endpoints/S3, 5432 to VPC CIDR)
+      - path: modules/ecs-llm-gateway/main.tf
+        resource: aws_vpc_security_group_ingress_rule.service_from_alb
+        note: Gateway service SG accepts the ALB only, on var.container_port (default 4000)
+      - path: modules/network/security-groups.tf
+        resource: aws_security_group.endpoint
+        note: Endpoint security group restricts VPC endpoint access to HTTPS from the VPC CIDR
+      - path: modules/vector-store/main.tf
+        resource: aws_vpc_security_group_ingress_rule.db_from_app
+        note: Database ingress only from app security group
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_policy.documents
+        note: Deny unencrypted transport; restrict PutObject to task roles only
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_policy.audit
+        note: Deny unencrypted transport; scoped allow for CloudTrail, Config, Bedrock
+    gaps: >-
+      Deployer is responsible for: verifying role policies bound to the permission
+      boundary are correctly scoped for the target application; auditing actual API
+      calls in CloudTrail to detect policy-bypass attempts or excessive access patterns.
+
+  - id: AC-6
+    family: AC
+    title: Least Privilege
+    responsibility: stack
+    statement: >-
+      Least privilege is enforced at the permission-boundary level. The boundary
+      explicitly denies privileged actions: iam:PutRolePermissionsBoundary,
+      iam:DeleteRolePermissionsBoundary (prevents boundary removal); iam:CreateRole,
+      iam:PutRolePolicy, iam:AttachRolePolicy unless the target role carries the
+      boundary (prevents escalation via new roles); iam:*AccessKey*, iam:*LoginProfile*;
+      kms:ScheduleKeyDeletion, kms:PutKeyPolicy (prevents key deletion/policy tampering);
+      cloudtrail:StopLogging, cloudtrail:DeleteTrail, config:StopConfigurationRecorder,
+      config:DeleteConfigurationRecorder (prevents audit disable); organizations:*,
+      account:*. Anything outside the enumerated allow-list is implicitly denied:
+      ECS operations permit only describe, update, run, stop (no create/delete
+      cluster); S3 operations allow read/write/delete object-level only (no
+      bucket-policy modify); RDS permits describe and rds-db:connect only.
+      Config rule iam-policy-no-statements-with-admin-access continuously monitors
+      and alerts on policies attempting to escalate past the boundary.
+    resources:
+      - path: modules/iam/main.tf
+        resource: aws_iam_policy.permission_boundary
+        note: 8 deny statements prevent boundary removal, escalation, and audit tampering; 17 allow statements enumerate service ceilings
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["iam-policy-no-statements-with-admin-access"]
+        note: Flags any IAM policy granting admin (*) permissions; continuous detective check
+    gaps: >-
+      Deployer is responsible for: reviewing role identity policies against the
+      boundary to ensure they conform to least-privilege; auditing API calls in
+      CloudTrail to detect unauthorized escalation attempts; monitoring Config
+      rule noncompliance alerts.
+
+  - id: AC-17
+    family: AC
+    title: Remote Access
+    responsibility: stack
+    statement: >-
+      Remote access is restricted via network isolation and security groups. The stack
+      deploys a private VPC with no public internet gateway (in no-egress mode) or
+      optional public subnets with NAT gating (in standard mode). No security group
+      in the stack carries an SSH rule, and the default security group is explicitly
+      emptied. The Config managed rule restricted-ssh flags any security group
+      permitting unrestricted inbound SSH (0.0.0.0/0) - a detective control, not a
+      preventive one. Remote access to compute (ECS tasks) is via the internal ALB
+      only; remote access to database (RDS) is via IAM authentication on the private
+      network only. The permission boundary's STS allow-list contains only
+      sts:AssumeRole and sts:GetCallerIdentity; other federation entry points are
+      outside the ceiling for bounded principals.
+    resources:
+      - path: modules/network/main.tf
+        resource: aws_default_security_group.main
+        note: Default SG explicitly emptied (no rules); prevents accidental attachment
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["restricted-ssh"]
+        note: Flags any security group permitting inbound SSH from 0.0.0.0/0; continuous detective check
+      - path: modules/iam/main.tf
+        resource: aws_iam_policy.permission_boundary
+        note: STS allow-list limited to sts:AssumeRole and sts:GetCallerIdentity
+    gaps: >-
+      Deployer is responsible for: configuring network ingress at the corporate
+      perimeter (firewall, VPN); configuring Bastion/Session Manager if RDP/SSH
+      console access to instances is required (not in this stack); monitoring
+      Config rule noncompliance for SSH boundary violations.
+
+  - id: AU-2
+    family: AU
+    title: Event Logging
+    responsibility: stack
+    statement: >-
+      CloudTrail records all management and data events. Management events include
+      all AWS control-plane API calls (create, modify, delete) across the account
+      in all regions (multi-region trail). Data events record object-level read/write
+      on the documents S3 bucket (CUI access trail), scoped to that bucket's ARN in
+      the trail's advanced event selector; CloudTrail Insights is a separate cost
+      toggle (var.enable_insights, off by default). Bedrock model-invocation logging
+      records API calls to foundation models (metadata-only by default per ADR-007;
+      full-content capture is configurable). CloudWatch Logs receive CloudTrail
+      events in real-time; AWS Config records configuration snapshots per
+      var.config_snapshot_frequency (default TwentyFour_Hours). The audit trail
+      includes: who (caller principal), what (action, resource, result), when
+      (timestamp), and from where (source IP, user agent). Event selection is
+      explicit; see AU-12 for generation specifics.
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: Management events (all APIs) and data events (documents bucket) with log-file validation
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: advanced_event_selector for Management category
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: advanced_event_selector for Data events (S3 documents)
+      - path: modules/audit/main.tf
+        resource: aws_config_configuration_recorder.this
+        note: Records all-supported resources and their configuration state
+      - path: modules/audit/main.tf
+        resource: aws_bedrock_model_invocation_logging_configuration.this
+        note: Records Bedrock API calls (metadata-only default, see ADR-007 for rationale)
+    gaps: >-
+      Deployer is responsible for: reviewing the event selection to match organizational
+      compliance requirements (e.g., data events, Insights); enabling Insights if
+      anomaly detection is needed (cost: per-event basis); setting up log analysis
+      and alerting (provided by observability module, but integration is deployer responsibility).
+
+  - id: AU-3
+    family: AU
+    title: Content of Audit Records
+    responsibility: stack
+    statement: >-
+      Audit records contain the following content: source principal (AWS account ID,
+      IAM user/role, federated identity), timestamp, API action, resources affected
+      (ARNs), result (success/failure, error code), and request parameters. CloudTrail
+      records these natively for all AWS API calls. Bedrock invocation logs record:
+      principal, model ID, timestamp, prompt/completion token count (metadata-only
+      default; full payloads optional per ADR-007). RDS logs record: user connection,
+      timestamp, query (if enabled). CloudWatch Logs include: log group name, log
+      stream, timestamp, message. The records correlate via timestamp and caller
+      identity, enabling end-to-end audit trails (e.g., user assumes role, invokes
+      Bedrock, logs appear in CloudWatch, all tracked via CloudTrail).
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: CloudTrail event structure (managementEvents include all API metadata)
+      - path: modules/audit/main.tf
+        resource: aws_bedrock_model_invocation_logging_configuration.this
+        note: Bedrock logs record principal, model, timestamp, token count (content configurable)
+      - path: modules/vector-store/main.tf
+        resource: aws_cloudwatch_log_group.postgresql
+        note: RDS logs (pre-created, exported to CloudWatch, KMS-encrypted)
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_log_group.this
+        note: CloudWatch Logs (KMS-encrypted, retention-configured)
+    gaps: >-
+      Deployer is responsible for: configuring log parsers and analytics to extract
+      and correlate audit records (docs/verification/audit-walkthrough.md provides examples); setting
+      up log export to SIEM/audit repositories if required; archiving logs per
+      retention schedule (lifecycle policies are in place; long-term archive is
+      deployment-specific).
+
+  - id: AU-6
+    family: AU
+    title: Audit Record Review, Analysis, and Reporting
+    responsibility: stack
+    statement: >-
+      CloudWatch Logs Insights provides ad-hoc querying of audit logs; the observability
+      module provides a dashboard template showing trail status, Config noncompliance,
+      and alarm trends. CloudTrail console provides pre-built views (e.g., event
+      history, API activity); the audit-walkthrough.md document provides example
+      Insights queries for incident investigation (e.g., "Find all S3 PutObject
+      calls in the last 24 hours"). AWS Config Rules continuously evaluate
+      compliance (encrypted-volumes, s3-bucket-ssl, rds-instance-public-access,
+      etc.) and emit noncompliance events to EventBridge, which triggers SNS
+      alarms. Deployer can configure additional analysis: Lambda for automated
+      response, Athena for long-term query, third-party SIEM ingestion.
+    resources:
+      - path: docs/verification/audit-walkthrough.md
+        note: Example audit queries and analysis procedures
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_dashboard.this
+        note: Dashboard with Config noncompliance, alarm trends, event counts
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_event_rule.config_noncompliant
+        note: Captures Config noncompliance events and publishes to SNS
+      - path: modules/audit/main.tf
+        resource: aws_config_configuration_recorder.this
+        note: Continuous compliance evaluation via Config rules
+    gaps: >-
+      Deployer is responsible for: setting up log analysis tools (Athena, Splunk, etc.);
+      defining incident-response procedures triggered by alarms; configuring retention
+      and archival for long-term audit storage; configuring third-party SIEM ingestion
+      if required.
+
+  - id: AU-9
+    family: AU
+    title: Protection of Audit Information
+    responsibility: stack
+    statement: >-
+      Audit logs are protected via multiple mechanisms: (1) Encryption at rest:
+      CloudTrail S3 bucket, CloudWatch Logs, and Config snapshots use customer-managed
+      KMS keys (separate CMK for logs domain); (2) Encryption in transit: S3 bucket
+      policy denies unencrypted (non-TLS) transport; (3) Integrity: CloudTrail
+      enable_log_file_validation computes SHA-256 hashes of logs; subsequent hashes
+      chain to previous entries, enabling tamper detection (via CloudTrail console
+      or aws cloudtrail validate-logs); (4) Immutability: audit S3 bucket supports
+      object lock (module default enabled, GOVERNANCE mode, 30-day default retention;
+      the minimal example disables it for sandbox teardown - enable for federal
+      deployments); (5) Access control: audit bucket policy restricts write to the
+      CloudTrail, Config, and Bedrock service principals; read access flows through
+      IAM identity policies (e.g., the auditor tier's read-only attachments), not
+      the bucket policy. Observability module provides a metric filter and alarm
+      detecting CloudTrail API tamper attempts (StopLogging, DeleteTrail, UpdateTrail).
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_server_side_encryption_configuration.audit
+        note: SSE-KMS with customer-managed key (logs domain CMK)
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_object_lock_configuration.audit
+        note: Object lock (GOVERNANCE mode default, 30-day default retention; both configurable)
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: enable_log_file_validation = true (SHA-256 hash chaining)
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: kms_key_id points to logs CMK; trail writes SSE-KMS encrypted objects
+      - path: modules/audit/main.tf
+        resource: aws_cloudwatch_log_group.trail
+        note: CloudTrail logs to CloudWatch with KMS encryption
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_policy.audit
+        note: Deny unencrypted transport; allow CloudTrail/Config/Bedrock write only
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_log_metric_filter.trail_tamper
+        note: Matches StopLogging, DeleteTrail, UpdateTrail events in the trail log group
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_metric_alarm.trail_tamper
+        note: Alarms on the tamper metric
+    gaps: >-
+      Deployer is responsible for: validating log-file validation hashes using the
+      CloudTrail console or CLI (aws cloudtrail validate-logs; see docs/verification/audit-walkthrough.md); monitoring
+      observability alarms for tamper attempts; configuring long-term off-site
+      backup of audit logs (not in this stack); defining access controls on who
+      can assume the auditor role.
+
+  - id: AU-11
+    family: AU
+    title: Audit Record Retention
+    responsibility: stack
+    statement: >-
+      Audit logs are retained per the following default schedule (all values
+      configurable): (1) CloudTrail logs in S3: 913 days default (approximately
+      30 months, M-21-31 aligned) via lifecycle expiration (var.audit_log_expiration_days);
+      (2) CloudTrail logs in CloudWatch Logs: 365 days default
+      (var.trail_log_retention_days); (3) AWS Config snapshots in S3: 913 days
+      (same audit bucket lifecycle); (4) AWS Config compliance history: 90 days
+      (Config API limitation). Application/database log retention is a required
+      finite input per log group in the observability module; the minimal example
+      sets 365 days for audit-relevant groups. Versioned-bucket cleanup is handled
+      via lifecycle noncurrent_version_expiration. M-21-31 guidance on federal
+      systems: retain logs 90 days for real-time review, one year for audit,
+      3 years for compliance; the defaults align with 1-year (365 days) for CWL
+      and 30-month (913 days) for S3 archive.
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_lifecycle_configuration.audit
+        note: Expiration after 913 days default (30 months per M-21-31); noncurrent version cleanup
+      - path: modules/audit/main.tf
+        resource: aws_cloudwatch_log_group.trail
+        note: retention_in_days = var.trail_log_retention_days (default 365)
+      - path: modules/audit/main.tf
+        resource: aws_config_delivery_channel.this
+        note: S3 lifecycle (same 913-day audit bucket) applies to Config snapshots
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_log_group.this
+        note: Log group factory; retention_in_days is a mandatory finite caller input
+    gaps: >-
+      Deployer is responsible for: confirming retention settings align with
+      organizational policy; configuring long-term archive (e.g., AWS Glacier,
+      off-site backup) beyond the base retention periods if required.
+
+  - id: AU-12
+    family: AU
+    title: Audit Record Generation
+    responsibility: stack
+    statement: >-
+      Audit records are generated by: (1) CloudTrail - all AWS API calls (management
+      events, all regions, all principals); (2) CloudTrail data events - S3 object-level
+      reads/writes on the documents bucket; (3) AWS Config - configuration snapshots
+      (all resources, all-supported enabled); (4) Bedrock model-invocation logging -
+      model calls with metadata (prompt/completion token counts, principal, timestamp);
+      (5) CloudWatch Logs - application logs (ECS tasks, RDS, KMS, endpoint), all
+      with timestamps and source identifiers. Event triggers are automatic: CloudTrail
+      records are typically delivered to S3 within about 15 minutes; Config evaluates
+      on resource change or per snapshot frequency (default TwentyFour_Hours);
+      application logs stream on-the-fly. No manual intervention is required.
+      Delivered records are protected by bucket versioning and, when object lock is
+      enabled, retention-locked; later events (tamper attempts) are independently logged.
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: Management and data event selectors (automatic generation)
+      - path: modules/audit/main.tf
+        resource: aws_config_configuration_recorder.this
+        note: All-supported resources recorded automatically
+      - path: modules/audit/main.tf
+        resource: aws_config_configuration_recorder_status.this
+        note: Recording enabled (is_enabled = true)
+      - path: modules/audit/main.tf
+        resource: aws_bedrock_model_invocation_logging_configuration.this
+        note: Model calls logged automatically (metadata-only default)
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_log_group.this
+        note: Log group factory; application logs written via CloudWatch Logs API
+    gaps: >-
+      Deployer is responsible for: verifying event generation by examining log
+      delivery (CloudTrail console, S3 bucket, CloudWatch Logs); confirming
+      application code writes logs to the correct log group (provided by
+      ECS task definition configuration).
+
+  - id: IA-2
+    family: IA
+    title: Identification and Authentication (Organizational Users)
+    responsibility: stack
+    statement: >-
+      Multi-factor authentication (MFA) is enforced on human role assumption via IAM
+      conditions: every human role tier (platform-admin, auditor, developer) has a
+      trust policy condition `aws:MultiFactorAuthPresent = true`. Attempts to assume
+      these roles without MFA are denied. Service principals (ECS, CloudTrail, Config,
+      Bedrock) authenticate via IAM service principals and are bound by trust policies
+      with SourceAccount and SourceArn conditions, preventing cross-account/service
+      hijacking. The optional CI role trusts caller-supplied IAM principal ARNs via
+      sts:AssumeRole (non-interactive, no MFA; an OIDC-federated role can be supplied
+      as the trusted principal). No local users or password credentials are created;
+      all access flows through IAM roles or federated identity. RDS database
+      authentication uses IAM authentication (iam_database_authentication_enabled
+      = true) instead of password-based auth, with temporary credentials via token.
+    resources:
+      - path: docs/rbac-model.md
+        note: Human assumption requires MFA (section 3, Role Assumption Paths)
+      - path: modules/iam/main.tf
+        resource: aws_iam_role.human_tier
+        note: "Human role tiers (for_each); trust policy condition aws:MultiFactorAuthPresent = true"
+      - path: modules/iam/main.tf
+        resource: aws_iam_role.ci_deploy
+        note: "CI trust: caller-supplied IAM principal ARNs (var.ci_trust_principal_arns)"
+      - path: modules/iam/main.tf
+        resource: aws_iam_role.task_execution
+        note: "Service principal trust: ecs-tasks.amazonaws.com with SourceAccount condition"
+      - path: modules/vector-store/main.tf
+        resource: aws_db_instance.vector
+        note: iam_database_authentication_enabled = true (token-based auth instead of password)
+      - path: modules/iam/main.tf
+        resource: aws_iam_policy.permission_boundary
+        note: "Denies iam:*AccessKey*, iam:*LoginProfile* (prevents local credential creation)"
+    gaps: >-
+      Deployer is responsible for: configuring MFA device enrollment (U2F, TOTP, virtual MFA);
+      setting up identity provider federation if using AWS Identity Center or third-party IdP;
+      auditing role assumption in CloudTrail to detect unauthorized or failed attempts.
+
+  - id: IA-5
+    family: IA
+    title: Authenticator Management
+    responsibility: shared
+    statement: >-
+      Secrets (credentials) are managed via AWS Secrets Manager with KMS encryption.
+      RDS master password is created by Terraform (manage_master_user_password = true),
+      automatically stored in Secrets Manager, encrypted with the secrets CMK, and
+      rotated automatically by RDS (managed, no Lambda required). Other secrets
+      (gateway API keys, third-party LLM credentials) follow the documented pattern:
+      create the secret resource (resource policy restricts read to app_task role only),
+      populate the value out-of-band (AWS CLI, never Terraform literals), and inject
+      into ECS task definition via the secrets block (ECS task-execution role retrieves
+      at launch, value never appears in state/logs). Secrets are encrypted at rest
+      (KMS) and in transit (TLS); access is logged in CloudTrail (call recorded, value
+      not logged). Plaintext secrets never appear in Terraform state, git history, or
+      application logs. No manual password management is performed; all credentials
+      flow through Secrets Manager.
+    resources:
+      - path: docs/secrets-handling.md
+        note: "Full pattern documentation (sections 2-4): create, populate, inject, rotate"
+      - path: modules/vector-store/main.tf
+        resource: aws_db_instance.vector
+        note: manage_master_user_password = true (RDS-managed automatic rotation)
+      - path: modules/vector-store/main.tf
+        resource: aws_db_instance.vector
+        note: master_user_secret_kms_key_id = var.secrets_kms_key_arn
+      - path: modules/kms/main.tf
+        resource: aws_kms_key.this["secrets"]
+        note: Secrets CMK with rotation enabled
+    gaps: >-
+      Stack implements: automatic RDS password rotation and encryption. Customer
+      is responsible for: (1) populating non-RDS secrets via AWS CLI/console (never
+      Terraform); (2) enabling rotation for custom secrets (Lambda pattern documented);
+      (3) auditing access (CloudTrail GetSecretValue calls); (4) ensuring application
+      code does not log injected secrets; (5) managing MFA on principal who can read
+      secrets (permission boundary enforces this; human role assumption requires MFA).
+
+  - id: RA-5
+    family: RA
+    title: Vulnerability Monitoring and Scanning
+    responsibility: stack
+    statement: >-
+      Static vulnerability scanning is integrated into the CI pipeline: (1) checkov
+      scans Terraform code for security control violations (CKV_AWS_* checks);
+      (2) tflint lints Terraform syntax and detects deprecated/unsafe patterns.
+      Both are required gates - the CI workflow fails on violations (unless explicitly
+      skipped with justification). Scans cover: resource hardening (encryption,
+      logging, public-access blocks), IAM policy overprivilege, network isolation,
+      KMS key policies. Scans do NOT cover: runtime vulnerabilities (requires deployer
+      to run container image scanning in their registry), penetration testing (not
+      in scope for this stack), source-code SAST (application code scanning is
+      deployer responsibility).
+    resources:
+      - path: .github/workflows/ci.yml
+        note: checkov and tflint jobs (scanning gates)
+      - path: docs/conventions.md
+        note: Checkov skip policy (section "Checkov Skip Policy") - inline justifications required
+    gaps: >-
+      This stack provides: static IaC scanning only. Deployer must add: (1) container
+      image vulnerability scanning (ECR, Trivy, Snyk); (2) application source-code
+      SAST (SonarQube, GitHub Advanced Security); (3) runtime monitoring (container
+      escape detection via CloudWatch Alarms on ECS task failures); (4) penetration
+      testing (not applicable to the stack, but required by ATO process).
+
+  - id: SC-7
+    family: SC
+    title: Boundary Protection
+    responsibility: stack
+    statement: >-
+      Network boundary protection is enforced via: (1) VPC with private-subnet-only
+      architecture (no public subnets, no internet gateway in no-egress mode); (2) VPC
+      endpoints for the required AWS services (including Bedrock, S3, ECR, KMS,
+      CloudWatch Logs, Secrets Manager, ECS, STS) with private DNS resolution;
+      (3) security groups: default SG explicitly emptied, gateway service SG allows
+      ingress from ALB only (var.container_port, default 4000), database SG allows
+      ingress from app SG only (port 5432), workload app SG is egress-only; (4) flow
+      logs to CloudWatch Logs (KMS-encrypted) for audit; (5) S3 bucket policy denying
+      unencrypted transport. In standard mode, public subnets and a single NAT gateway
+      are optional; in no-egress mode, zero NAT/IGW. The Config rule restricted-ssh
+      flags inbound SSH from 0.0.0.0/0 (detective). No workload has direct internet
+      access; all egress (if enabled) routes through a single NAT gateway (single
+      point of logging/control).
+    resources:
+      - path: modules/network/main.tf
+        resource: aws_vpc.main
+        note: Private subnets across 2+ AZs; enable_dns_hostnames and enable_dns_support for endpoint resolution
+      - path: modules/network/main.tf
+        resource: aws_subnet.private
+        note: map_public_ip_on_launch = false
+      - path: modules/network/main.tf
+        resource: aws_default_security_group.main
+        note: Explicitly emptied (no rules)
+      - path: modules/network/security-groups.tf
+        resource: aws_security_group.app
+        note: Egress-only workload SG (443 to endpoints/S3, 5432 to VPC CIDR)
+      - path: modules/ecs-llm-gateway/main.tf
+        resource: aws_vpc_security_group_ingress_rule.service_from_alb
+        note: Gateway service ingress from ALB only
+      - path: modules/vector-store/main.tf
+        resource: aws_vpc_security_group_ingress_rule.db_from_app
+        note: Database ingress from app SG only (port 5432)
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_policy.documents
+        note: "Deny unencrypted transport (aws:SecureTransport = false)"
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_policy.audit
+        note: Deny unencrypted transport
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["restricted-ssh"]
+        note: Flags any SG permitting inbound SSH from 0.0.0.0/0
+    gaps: >-
+      Deployer is responsible for: (1) configuring VPC endpoints correctly (template
+      provided in network module); (2) validating endpoint policies restrict traffic
+      to intended principals; (3) monitoring flow logs for unexpected traffic patterns
+      (queries documented in audit-walkthrough.md); (4) if using standard mode with
+      NAT, configuring egress rules on private route tables and monitoring NAT gateway
+      throughput/errors.
+
+  - id: SC-8
+    family: SC
+    title: Transmission Confidentiality and Integrity
+    responsibility: stack
+    statement: >-
+      All data in transit is encrypted via TLS. (1) ALB listener enforces HTTPS
+      (port 443 termination, cleartext backend to service SG allowed - backend spans
+      private subnets only, no internet reachability); (2) RDS force_ssl = 1 in
+      parameter group enforces TLS on all connections; (3) S3 bucket policies deny
+      any request with aws:SecureTransport = false (applies to all operations, including
+      CloudTrail/Config delivery); (4) Secrets Manager API calls use TLS (AWS service
+      default); (5) KMS API calls use TLS (AWS service default); (6) VPC endpoints
+      resolve to private IPs, traffic stays within AWS backbone (no internet exposure).
+      The ALB certificate is either a caller-supplied ACM certificate
+      (var.certificate_arn; ACM Private CA recommended for internal ALBs) or a
+      module-generated self-signed certificate (sandbox only) - exactly one must be set.
+    resources:
+      - path: modules/ecs-llm-gateway/main.tf
+        resource: aws_lb_listener.https
+        note: HTTPS listener on port 443; protocol = "HTTPS"
+      - path: modules/vector-store/main.tf
+        resource: aws_db_parameter_group.vector
+        note: parameter rds.force_ssl = 1
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_policy.documents
+        note: "Deny statement on aws:SecureTransport = false"
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_policy.audit
+        note: "Deny statement on aws:SecureTransport = false"
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["s3-bucket-ssl-requests-only"]
+        note: Flags buckets whose policies do not enforce TLS-only access (Config rule)
+    gaps: >-
+      Deployer is responsible for: (1) installing a valid TLS certificate on the ALB
+      (via ACM or private CA); (2) if using a self-signed cert (sandbox only), documenting
+      the MITM risk; (3) rotating certificates before expiration (ACM provides auto-renewal).
+
+  - id: SC-8(1)
+    family: SC
+    title: Cryptographic Protection
+    responsibility: stack
+    statement: >-
+      Cryptographic mechanisms (TLS 1.2+) protect confidentiality and integrity of
+      data in transit. ALB listener enforces HTTPS (TLS termination). RDS uses TLS
+      for all client connections (force_ssl = 1). S3 bucket policies enforce TLS-only
+      access (deny non-HTTPS). AWS service APIs (KMS, Secrets Manager, STS) use TLS
+      by default. Config rule s3-bucket-ssl-requests-only continuously validates S3
+      bucket policies enforce HTTPS. VPC endpoints keep traffic on the AWS backbone
+      (no internet exposure).
+    resources:
+      - path: modules/ecs-llm-gateway/main.tf
+        resource: aws_lb_listener.https
+        note: TLS protocol termination on ALB
+      - path: modules/vector-store/main.tf
+        resource: aws_db_parameter_group.vector
+        note: rds.force_ssl = 1 enforces TLS on all RDS connections
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["s3-bucket-ssl-requests-only"]
+        note: Config rule validates S3 TLS enforcement
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_policy.documents
+        note: "Deny condition on aws:SecureTransport = false"
+    gaps: >-
+      Deployer is responsible for: (1) verifying TLS version (1.2+) on ALB listener
+      and RDS parameter group (AWS defaults are 1.2+); (2) monitoring for any TLS
+      downgrade attempts in CloudTrail.
+
+  - id: SC-12
+    family: SC
+    title: Cryptographic Key Establishment and Management
+    responsibility: stack
+    statement: >-
+      Cryptographic keys are customer-managed AWS KMS CMKs (not AWS-managed keys).
+      Three separate domains: (1) data - encrypts EBS, RDS, S3 documents; (2) logs -
+      encrypts CloudTrail, Config, CloudWatch Logs, SNS alarm topic; (3) secrets -
+      encrypts Secrets Manager. Key policies follow least-privilege: data-plane
+      service use is scoped via kms:ViaService conditions per domain (e.g., RDS calls
+      only via rds.{region}.amazonaws.com); audit-plane service statements carry the
+      conditions AWS documents for each service (CloudTrail EncryptionContext +
+      SourceArn, Config SourceAccount, Bedrock SourceAccount/SourceArn); the
+      CloudWatch-alarms and EventBridge statements on the logs key are deliberately
+      condition-free because condition support there is undocumented and fails
+      silently (rationale in module comments). Key rotation is enabled automatically
+      on all keys (enable_key_rotation = true). Key deletion is prevented by the
+      boundary (deny kms:ScheduleKeyDeletion, kms:PutKeyPolicy). Key grants are
+      created dynamically by AWS services (CreateGrant for ViaService-scoped domains).
+    resources:
+      - path: modules/kms/main.tf
+        resource: aws_kms_key.this
+        note: enable_key_rotation = true (automatic annual rotation)
+      - path: modules/kms/main.tf
+        resource: aws_kms_key.this["data"]
+        note: data domain CMK (EBS, RDS, S3 document store)
+      - path: modules/kms/main.tf
+        resource: aws_kms_key.this["logs"]
+        note: logs domain CMK (CloudTrail, Config, CloudWatch Logs)
+      - path: modules/kms/main.tf
+        resource: aws_kms_key.this["secrets"]
+        note: secrets domain CMK (Secrets Manager, RDS managed password)
+      - path: modules/kms/main.tf
+        resource: aws_kms_alias.this
+        note: Aliases for easy reference (alias/{project}-{environment}-{domain})
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["cmk-backing-key-rotation-enabled"]
+        note: Config rule validates automatic key rotation is enabled
+      - path: modules/iam/main.tf
+        resource: aws_iam_policy.permission_boundary
+        note: "Deny kms:ScheduleKeyDeletion, kms:PutKeyPolicy (prevents key tampering)"
+    gaps: >-
+      Deployer is responsible for: (1) auditing key policy changes (tracked in CloudTrail);
+      (2) monitoring key rotation dates (CloudTrail shows EnableKeyRotation calls);
+      (3) archiving old keys if required (AWS supports key retirement; not in this stack).
+
+  - id: SC-13
+    family: SC
+    title: Cryptographic Protection
+    responsibility: stack
+    statement: >-
+      Cryptographic algorithms are AWS-managed and AES-256-based. KMS CMKs use
+      AES-256 for all envelope encryption (S3 via sse_algorithm = "aws:kms"; RDS,
+      CloudWatch Logs, and SNS via KMS key references). TLS 1.2+ provides symmetric
+      encryption for data in transit. The stack does not expose algorithm selection
+      to the deployer; AWS defaults (AES-256 symmetric, 256-bit key material) are
+      enforced. No weak ciphers or deprecated algorithms are supported (AWS managed
+      service limitation).
+    resources:
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_server_side_encryption_configuration.documents
+        note: "sse_algorithm = aws:kms (AES-256, key = var.data_kms_key_arn)"
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_server_side_encryption_configuration.audit
+        note: "sse_algorithm = aws:kms (AES-256, key = var.logs_kms_key_arn)"
+      - path: modules/vector-store/main.tf
+        resource: aws_db_instance.vector
+        note: storage_encrypted = true (AES-256 via KMS key)
+      - path: modules/observability/main.tf
+        resource: aws_sns_topic.alarms
+        note: kms_master_key_id = var.logs_kms_key_arn (AES-256)
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_log_group.this
+        note: kms_key_id = var.logs_kms_key_arn (AES-256)
+    gaps: >-
+      None. AWS manages the cryptographic implementation; no deployer action required.
+
+  - id: SC-28
+    family: SC
+    title: Protection of Information at Rest
+    responsibility: stack
+    statement: >-
+      All information at rest is encrypted. (1) EBS volumes attached to EC2 instances
+      (if used) are encrypted via the data CMK (Config rule encrypted-volumes flags
+      unencrypted volumes). (2) RDS storage is encrypted via the data CMK
+      (storage_encrypted = true, kms_key_id set; Config rule rds-storage-encrypted
+      flags noncompliance). (3) The documents and audit buckets use SSE-KMS with
+      customer-managed keys; the S3 access-log and ALB-log buckets use SSE-S3
+      (AES-256) because the S3 and ELB log-delivery services do not support
+      customer-managed KMS keys. (4) CloudWatch Logs are encrypted with the logs CMK.
+      (5) Secrets Manager values are encrypted with the secrets CMK. (6) Snapshots of
+      encrypted volumes/databases are encrypted with the same key. No plaintext data
+      is stored in any AWS storage service.
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["encrypted-volumes"]
+        note: Flags unencrypted EBS volumes (detective)
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["rds-storage-encrypted"]
+        note: Flags unencrypted RDS storage (detective)
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_server_side_encryption_configuration.documents
+        note: SSE-KMS on documents bucket (data CMK)
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_server_side_encryption_configuration.access_logs
+        note: SSE-S3 (AES-256) on access logs bucket; log delivery does not support CMKs
+      - path: modules/audit/main.tf
+        resource: aws_s3_bucket_server_side_encryption_configuration.audit
+        note: SSE-KMS on audit bucket
+      - path: modules/vector-store/main.tf
+        resource: aws_db_instance.vector
+        note: storage_encrypted = true with data CMK
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_log_group.this
+        note: kms_key_id enforces KMS encryption
+    gaps: >-
+      Deployer is responsible for: (1) monitoring key rotation dates in CloudTrail;
+      (2) archiving old keys if required by compliance policy.
+
+  - id: SC-28(1)
+    family: SC
+    title: Cryptographic Protection
+    responsibility: stack
+    statement: >-
+      Customer-managed KMS CMKs provide cryptographic protection for all information
+      at rest. (1) EBS volumes use AES-256 encryption via the data CMK (Config rule
+      flags unencrypted volumes). (2) RDS storage uses AES-256
+      encryption via the data CMK; encryption is mandatory (storage_encrypted = true,
+      no option to disable). (3) S3 buckets use AES-256 encryption via customer KMS
+      keys; default encryption configuration prevents unencrypted uploads. (4) All
+      backup snapshots inherit encryption from their parent (encrypted EBS/RDS
+      snapshots are encrypted with the same key). (5) Encryption key management is
+      centralized in KMS; no plaintext key material is ever exposed to the application
+      layer.
+    resources:
+      - path: modules/kms/main.tf
+        resource: aws_kms_key.this["data"]
+        note: Data domain CMK (AES-256, backing key rotation enabled)
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["encrypted-volumes"]
+        note: Config rule validates all volumes encrypted at rest
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules["rds-storage-encrypted"]
+        note: Config rule validates RDS storage encrypted at rest
+      - path: modules/document-store/main.tf
+        resource: aws_s3_bucket_server_side_encryption_configuration.documents
+        note: Mandatory SSE-KMS; no fallback to SSE-S3
+      - path: modules/vector-store/main.tf
+        resource: aws_db_instance.vector
+        note: storage_encrypted = true; kms_key_id = var.data_kms_key_arn (no option to disable)
+    gaps: >-
+      None. AWS ensures AES-256 encryption for all data at rest; no deployer action required.
+
+  - id: SI-4
+    family: SI
+    title: System Monitoring
+    responsibility: stack
+    statement: >-
+      System monitoring is provided by multiple mechanisms: (1) CloudTrail - logs all
+      API calls (management and data events); (2) AWS Config - continuously evaluates
+      compliance against 10 managed rules (encrypted-volumes, s3-bucket-ssl-requests-only,
+      etc.) and emits noncompliance events to EventBridge/SNS; (3) CloudWatch Alarms -
+      the observability module monitors RDS CPU/connections/storage, endpoint packet
+      drops, CloudTrail tamper attempts, and Config noncompliance, while the gateway
+      module self-instruments ALB target health, 5xx rate, latency p95, and running
+      task count; (4) VPC Flow Logs - capture network traffic (accept/reject) to
+      CloudWatch Logs, enabling anomaly detection (e.g., unexpected port access);
+      (5) CloudWatch Logs Insights - ad-hoc querying of application logs (gateway,
+      RDS, endpoint). No runtime container scanning is included (deployer adds ECR
+      image scanning). No intrusion-detection system (IDS) is deployed (outside scope).
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_cloudtrail.this
+        note: Continuous API logging (management + data events)
+      - path: modules/audit/main.tf
+        resource: aws_config_configuration_recorder.this
+        note: Continuous compliance evaluation
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules
+        note: 10 managed rules (all 10 rules summarized above)
+      - path: modules/network/flow-logs.tf
+        resource: aws_flow_log.vpc
+        note: VPC Flow Logs to CloudWatch Logs (KMS-encrypted)
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_metric_alarm.rds_cpu
+        note: RDS CPU utilization alarm
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_metric_alarm.rds_connections
+        note: RDS connection count alarm
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_event_rule.config_noncompliant
+        note: EventBridge rule captures Config noncompliance events
+      - path: modules/observability/main.tf
+        resource: aws_cloudwatch_metric_alarm.trail_tamper
+        note: Alarms on CloudTrail tampering attempts (StopLogging, DeleteTrail, UpdateTrail)
+      - path: modules/ecs-llm-gateway/main.tf
+        resource: aws_cloudwatch_metric_alarm.latency_p95
+        note: Gateway latency alarm (one of four self-instrumented gateway alarms)
+    gaps: >-
+      Deployer is responsible for: (1) configuring ECR image scanning or Trivy for
+      container vulnerability detection; (2) setting up SIEM/log aggregation for
+      security analytics (tools: Splunk, ELK, AWS Security Hub); (3) configuring
+      response automation (Lambda, Step Functions) for detected anomalies; (4) monitoring
+      VPC Flow Logs for suspicious traffic patterns.
+
+  - id: CM-2
+    family: CM
+    title: Baseline Configuration
+    responsibility: stack
+    statement: >-
+      Terraform is the configuration baseline. All infrastructure is declared as code
+      in version-controlled Terraform modules; no manual console changes are permitted
+      (enforced by CI checks and git history audit). Each module's README documents
+      the component's responsibility and design. Examples (minimal, full-stack) provide
+      tested baselines for deployment. Container images are digest-pinned (not :latest);
+      CI actions are pinned to full commit SHAs. Terraform version is pinned to 1.9+
+      to prevent silent breaking changes. AWS provider is pinned to ~6.0. Lock files
+      are committed in examples, not modules (modules remain flexible for consumers).
+      Configuration drift is detected via AWS Config (all resources recorded).
+    resources:
+      - path: modules/
+        note: All 8 modules define the baseline (network, kms, iam, ecs-llm-gateway, vector-store, document-store, audit, observability)
+      - path: examples/minimal/
+        note: Minimal deployment example (terraform and lock file)
+      - path: examples/full-stack/
+        note: Full-stack deployment example (terraform and lock file)
+      - path: modules/audit/versions.tf
+        note: Terraform >= 1.9.0, < 2.0.0; AWS provider ~> 6.0 (every module carries the same versions.tf pins)
+      - path: .github/workflows/ci.yml
+        note: Actions pinned to full commit SHAs (no floating tags)
+    gaps: >-
+      Deployer is responsible for: (1) committing all infrastructure changes via
+      git (no console modifications); (2) reviewing Terraform plans in PR before
+      apply; (3) maintaining git history for compliance audit.
+
+  - id: CM-3
+    family: CM
+    title: Configuration Change Control
+    responsibility: stack
+    statement: >-
+      Change control flows through git: CI gates run on every push and pull request -
+      terraform fmt/validate, tflint, checkov, tests, and docs-check (terraform-docs
+      must reflect current code). Each commit follows Conventional Commits format
+      (feat, fix, docs, test, chore, ci). The check-controls gate
+      (scripts/check-control-refs.py) validates that control ids annotated in
+      modules/audit/main.tf local.config_rules stay synchronized with CONTROLS.md
+      and docs/controls.yaml and that every cited Terraform resource exists. Branch
+      protection and mandatory PR review are GitHub repository settings the deployer
+      enables. Rollback is via git revert (audit trail preserved).
+    resources:
+      - path: .github/workflows/ci.yml
+        note: CI gates (fmt, validate, tflint, checkov, test) block merge until passing
+      - path: docs/conventions.md
+        note: Conventional Commits format (section "Git Conventions")
+    gaps: >-
+      Deployer is responsible for: (1) configuring GitHub branch protection rules
+      (require PR reviews, require CI checks pass); (2) training team on PR review
+      process; (3) monitoring and responding to CI failures; (4) documenting change
+      control procedures (this template is a starting point).
+
+  - id: CM-6
+    family: CM
+    title: Configuration Settings
+    responsibility: stack
+    statement: >-
+      Configuration settings are monitored by AWS Config. The configuration recorder
+      records all-supported resources and their attributes (running: is_enabled = true).
+      Ten managed Config rules continuously evaluate compliance: (1) encrypted-volumes
+      (all EBS encrypted), (2) rds-storage-encrypted (RDS encrypted), (3) rds-instance-public-access-check
+      (RDS not public), (4) s3-bucket-public-read-prohibited (S3 no public read), (5)
+      s3-bucket-public-write-prohibited (S3 no public write), (6) s3-bucket-ssl-requests-only
+      (S3 TLS-only), (7) cloud-trail-log-file-validation-enabled (CloudTrail validation
+      on), (8) iam-policy-no-statements-with-admin-access (no IAM * permissions), (9)
+      restricted-ssh (no SSH 0.0.0.0/0), (10) cmk-backing-key-rotation-enabled (keys
+      rotate). These rules detect and flag noncompliance on resource change or per
+      snapshot frequency (default TwentyFour_Hours); they do not block changes.
+      EventBridge publishes noncompliance events to SNS alarms.
+    resources:
+      - path: modules/audit/main.tf
+        resource: aws_config_configuration_recorder.this
+        note: all_supported = true, include_global_resource_types = true
+      - path: modules/audit/main.tf
+        resource: aws_config_configuration_recorder_status.this
+        note: is_enabled = true (recording active)
+      - path: modules/audit/main.tf
+        resource: aws_config_delivery_channel.this
+        note: Snapshots to S3 per var.config_snapshot_frequency (default TwentyFour_Hours)
+      - path: modules/audit/main.tf
+        resource: aws_config_config_rule.rules
+        note: All 10 rules listed (for_each loop)
+    gaps: >-
+      Deployer is responsible for: (1) responding to Config rule noncompliance
+      alerts; (2) investigating root cause (Config console, CloudTrail); (3)
+      remediating (Terraform change + PR, or AWS Config Remediation if configured).

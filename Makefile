@@ -1,4 +1,4 @@
-.PHONY: fmt fmt-check init tf-validate tflint checkov docs docs-check test validate help
+.PHONY: fmt fmt-check init tf-validate tflint checkov check-controls docs docs-check test validate help
 
 DIRS := $(wildcard modules/*) $(wildcard examples/*)
 TF_PLUGIN_CACHE_DIR ?= $(HOME)/.terraform.d/plugin-cache
@@ -11,6 +11,7 @@ help:
 	@echo "  tf-validate  - Validate Terraform configuration"
 	@echo "  tflint       - Run tflint linter"
 	@echo "  checkov      - Run Checkov security checks"
+	@echo "  check-controls - Check CONTROLS.md/controls.yaml/code consistency"
 	@echo "  docs         - Generate module documentation"
 	@echo "  docs-check   - Check that docs are up to date"
 	@echo "  test         - Run Terraform tests (if present)"
@@ -42,6 +43,9 @@ tflint:
 checkov:
 	checkov --config-file .checkov.yaml
 
+check-controls:
+	python3 scripts/check-control-refs.py
+
 docs:
 	@for d in $(wildcard modules/*); do \
 		terraform-docs -c .terraform-docs.yml $$d || exit 1; \
@@ -60,4 +64,4 @@ test: init
 		fi; \
 	done
 
-validate: fmt-check tf-validate tflint checkov docs-check test
+validate: fmt-check tf-validate tflint checkov check-controls docs-check test

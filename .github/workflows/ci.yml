@@ -80,6 +80,8 @@ jobs:
           python-version: '3.11'
       - run: pip install checkov==3.3.6
       - run: make checkov
+      # checkov pulls in PyYAML, which the control-mapping checker needs
+      - run: make check-controls
 
   docs:
     runs-on: ubuntu-latest
