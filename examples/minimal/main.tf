@@ -77,6 +77,9 @@ module "document_store" {
 
   # No object lock in sandbox (see module README for irreversibility warning)
 
+  # The audit module logs its bucket into access-logs under this prefix
+  additional_logging_prefixes = ["audit"]
+
   tags = {
     Example = "minimal"
   }
@@ -164,6 +167,69 @@ module "gateway" {
   create_self_signed_cert    = var.create_self_signed_cert
   alb_logs_bucket_id         = module.document_store.bucket_ids["alb-logs"]
   enable_deletion_protection = var.gateway_deletion_protection
+
+  # gateway <-> observability mutual references are resource-acyclic: gateway's
+  # alarms consume the SNS topic, while observability's dashboard consumes the
+  # ALB/cluster identifiers (same pattern as iam <-> gateway above).
+  alarm_topic_arn = module.observability.alarm_topic_arn
+
+  tags = {
+    Example = "minimal"
+  }
+}
+
+# Audit module: CloudTrail (multi-region, KMS, log-file validation), AWS Config
+# recorder + 800-53-annotated rules, S3 data events on the documents bucket,
+# Bedrock model-invocation logging (metadata-only per ADR-007)
+module "audit" {
+  source = "../../modules/audit"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  logs_kms_key_arn      = module.kms.key_arns["logs"]
+  documents_bucket_arn  = module.document_store.bucket_arns["documents"]
+  access_logs_bucket_id = module.document_store.bucket_ids["access-logs"]
+
+  # No object lock in sandbox (module default is true; production compositions
+  # keep it — same teardown trade-off as the documents bucket above)
+  enable_object_lock = false
+
+  tags = {
+    Example = "minimal"
+  }
+}
+
+# Observability module: SNS alarm topic, log-group factory, RDS vitals,
+# endpoint packet-drop canary, CloudTrail-tamper alarm, dashboard
+module "observability" {
+  source = "../../modules/observability"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  logs_kms_key_arn = module.kms.key_arns["logs"]
+
+  # RDS vitals
+  db_instance_id = module.vector_store.db_instance_id
+
+  # No-egress canary: packet drops at the interface endpoints
+  vpc_id                 = module.network.vpc_id
+  interface_endpoint_ids = module.network.interface_endpoint_ids
+
+  # CloudTrail tamper detection reads the audit module's trail log group
+  cloudtrail_log_group_name = module.audit.audit_log_group_name
+
+  # Dashboard identifiers from the gateway (see acyclicity note on the gateway module)
+  alb_arn_suffix          = module.gateway.alb_arn_suffix
+  target_group_arn_suffix = module.gateway.target_group_arn_suffix
+  cluster_name            = module.gateway.cluster_name
+  service_name            = module.gateway.service_name
+
+  # Every alarm carries this RunbookUrl tag
+  runbook_url = "https://github.com/uehlingeric/federal-llm-blueprint/blob/master/modules/observability/README.md#runbooks"
 
   tags = {
     Example = "minimal"
