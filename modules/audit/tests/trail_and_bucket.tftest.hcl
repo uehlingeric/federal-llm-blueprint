@@ -105,13 +105,15 @@ run "trail_and_bucket_checks" {
     error_message = "Trail must have logging enabled"
   }
 
-  # Advanced event selectors: management + documents data events
+  # Advanced event selectors: management + documents data events.
+  # try() guards: unset selector attributes are null, and terraform 1.9.x
+  # (the CI floor) evaluates both sides of && — short-circuiting arrived in 1.10.
   assert {
     condition = anytrue([
       for sel in aws_cloudtrail.this.advanced_event_selector :
       anytrue([
         for fs in sel.field_selector :
-        fs.field == "eventCategory" && contains(fs.equals, "Management")
+        fs.field == "eventCategory" && try(contains(fs.equals, "Management"), false)
       ])
     ])
     error_message = "Trail must have a management event selector"
@@ -122,7 +124,7 @@ run "trail_and_bucket_checks" {
       for sel in aws_cloudtrail.this.advanced_event_selector :
       anytrue([
         for fs in sel.field_selector :
-        fs.field == "resources.ARN" && length(fs.starts_with) > 0 && strcontains(fs.starts_with[0], var.documents_bucket_arn)
+        fs.field == "resources.ARN" && try(strcontains(fs.starts_with[0], var.documents_bucket_arn), false)
       ])
     ])
     error_message = "Trail must have documents bucket ARN in a data event selector"
@@ -178,11 +180,12 @@ run "trail_and_bucket_checks" {
     error_message = "Audit bucket must have object lock enabled by default"
   }
 
-  # Lifecycle expiration
+  # Lifecycle expiration (try() guard: the abort-multipart rule has no
+  # expiration block, and 1.9.x && does not short-circuit)
   assert {
     condition = anytrue([
       for rule in aws_s3_bucket_lifecycle_configuration.audit.rule :
-      rule.id == "expire-audit-logs" && rule.expiration[0].days == var.audit_log_expiration_days
+      rule.id == "expire-audit-logs" && try(rule.expiration[0].days == var.audit_log_expiration_days, false)
     ])
     error_message = "Audit bucket lifecycle must expire logs after audit_log_expiration_days"
   }
