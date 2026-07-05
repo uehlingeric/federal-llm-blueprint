@@ -425,8 +425,11 @@ data "aws_iam_policy_document" "access_logs" {
       type        = "Service"
       identifiers = ["logging.s3.amazonaws.com"]
     }
-    actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.access_logs.arn}/documents/*"]
+    actions = ["s3:PutObject"]
+    resources = concat(
+      ["${aws_s3_bucket.access_logs.arn}/documents/*"],
+      [for p in var.additional_logging_prefixes : "${aws_s3_bucket.access_logs.arn}/${p}/*"]
+    )
 
     condition {
       test     = "StringEquals"
