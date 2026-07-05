@@ -298,6 +298,7 @@ No modules.
 | [aws_appautoscaling_policy.request_count_scaling](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/appautoscaling_policy) | resource |
 | [aws_appautoscaling_target.ecs_service](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/appautoscaling_target) | resource |
 | [aws_cloudwatch_log_group.gateway](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_log_group) | resource |
+| [aws_cloudwatch_metric_alarm.latency_p95](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) | resource |
 | [aws_cloudwatch_metric_alarm.running_task_count](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) | resource |
 | [aws_cloudwatch_metric_alarm.target_5xx](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) | resource |
 | [aws_cloudwatch_metric_alarm.unhealthy_hosts](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudwatch_metric_alarm) | resource |
@@ -347,6 +348,7 @@ No modules.
 | enable\_deletion\_protection | Enable deletion protection on the ALB (prevents accidental destroy; set false then apply before destroying) | `bool` | `true` | no |
 | enable\_execute\_command | Enable ECS Exec for interactive task debugging. WARNING: Opens an interactive shell channel into tasks — has AU/audit implications. Leave false in assessed environments. | `bool` | `false` | no |
 | enable\_fargate\_spot | Enable ECS Fargate Spot capacity provider (cost optimization; nonprod only) | `bool` | `false` | no |
+| latency\_p95\_threshold\_seconds | p95 TargetResponseTime threshold in seconds for the gateway latency alarm. Default 60: TargetResponseTime measures time to full response, and LLM completions routinely take tens of seconds — tune down for short-completion workloads. | `number` | `60` | no |
 | log\_retention\_days | CloudWatch Logs retention period in days (must be a valid CloudWatch retention value) | `number` | `90` | no |
 | master\_key\_secret\_arn | ARN of existing Secrets Manager secret holding the LiteLLM master key. When null, the module creates an empty secret shell (value populated out-of-band per docs/secrets-handling.md). | `string` | `null` | no |
 | max\_capacity | Maximum number of ECS tasks for autoscaling (default 3) | `number` | `3` | no |
@@ -361,13 +363,16 @@ No modules.
 | Name | Description |
 | ---- | ----------- |
 | alb\_arn | ARN of the Application Load Balancer |
+| alb\_arn\_suffix | ALB ARN suffix (LoadBalancer dimension for CloudWatch metrics; consumed by observability dashboard) |
 | alb\_dns\_name | Internal ALB DNS name (for in-VPC client requests) |
 | alb\_security\_group\_id | Security group ID for the ALB |
 | cluster\_arn | ARN of the ECS cluster |
+| cluster\_name | Name of the ECS cluster (ClusterName dimension for CloudWatch metrics; consumed by observability dashboard) |
 | config\_parameter\_arn | ARN of the SSM Parameter Store SecureString holding the LiteLLM config YAML |
 | gateway\_url | Gateway HTTPS URL (constructed from ALB DNS name) |
 | log\_group\_arn | CloudWatch log group ARN for gateway container logs |
 | log\_group\_name | CloudWatch log group name for gateway container logs |
 | master\_key\_secret\_arn | ARN of the Secrets Manager secret holding the LiteLLM master key (either provided or created by module) |
 | service\_name | Name of the ECS service |
+| target\_group\_arn\_suffix | Target group ARN suffix (TargetGroup dimension for CloudWatch metrics; consumed by observability dashboard) |
 <!-- END_TF_DOCS -->

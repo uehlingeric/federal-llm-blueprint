@@ -8,6 +8,16 @@ output "alb_arn" {
   value       = aws_lb.gateway.arn
 }
 
+output "alb_arn_suffix" {
+  description = "ALB ARN suffix (LoadBalancer dimension for CloudWatch metrics; consumed by observability dashboard)"
+  value       = aws_lb.gateway.arn_suffix
+}
+
+output "target_group_arn_suffix" {
+  description = "Target group ARN suffix (TargetGroup dimension for CloudWatch metrics; consumed by observability dashboard)"
+  value       = aws_lb_target_group.gateway.arn_suffix
+}
+
 output "alb_security_group_id" {
   description = "Security group ID for the ALB"
   value       = aws_security_group.alb.id
@@ -16,6 +26,11 @@ output "alb_security_group_id" {
 output "cluster_arn" {
   description = "ARN of the ECS cluster"
   value       = aws_ecs_cluster.gateway.arn
+}
+
+output "cluster_name" {
+  description = "Name of the ECS cluster (ClusterName dimension for CloudWatch metrics; consumed by observability dashboard)"
+  value       = aws_ecs_cluster.gateway.name
 }
 
 output "service_name" {

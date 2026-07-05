@@ -633,3 +633,33 @@ resource "aws_cloudwatch_metric_alarm" "running_task_count" {
     }
   )
 }
+
+# Alarm 4: Target response time p95
+resource "aws_cloudwatch_metric_alarm" "latency_p95" {
+  alarm_name          = "${local.name_prefix}-gateway-latency-p95"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "TargetResponseTime"
+  namespace           = "AWS/ApplicationELB"
+  period              = 300
+  extended_statistic  = "p95"
+  threshold           = var.latency_p95_threshold_seconds
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    LoadBalancer = aws_lb.gateway.arn_suffix
+    TargetGroup  = aws_lb_target_group.gateway.arn_suffix
+  }
+
+  alarm_description = "Alert when p95 target response time exceeds threshold for 15 minutes (LLM completions are inherently slow; threshold tuned for full-response generation, not TTFB)"
+  alarm_actions     = var.alarm_topic_arn != null ? [var.alarm_topic_arn] : []
+  ok_actions        = var.alarm_topic_arn != null ? [var.alarm_topic_arn] : []
+
+  tags = merge(
+    local.common_tags,
+    var.tags,
+    {
+      Name = "${local.name_prefix}-gateway-latency-p95"
+    }
+  )
+}
