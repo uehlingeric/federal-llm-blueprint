@@ -96,8 +96,8 @@ CloudTrail with log-file validation, multi-region recording, and S3 + CloudWatch
 | **ecs-llm-gateway** | ECS Fargate cluster, hardened task definition (non-root, read-only FS, no privileged), LiteLLM container image (digest-pinned), internal ALB with TLS, health checks, autoscaling (CPU + request count). | 4 |
 | **vector-store** | RDS Postgres 16 with pgvector, encrypted storage (data CMK), IAM authentication, RDS-managed secret credential rotation (Secrets Manager, no custom Lambda), private subnet only, SG ingress 5432 from app SG only. | 5 |
 | **document-store** | S3 bucket set (documents, access-logs, alb-logs), versioning, SSE-KMS, public-access block, TLS-only bucket policy, lifecycle policies, optional object lock. | 5 |
-| **audit** | CloudTrail (multi-region, log-file validation, S3 + CloudWatch), AWS Config recorder, data event recording on document store, Config managed rules annotated to 800-53 controls. | 6 |
-| **observability** | Log-group factory (KMS mandatory, retention mandatory), alarm baseline (gateway 5xx/latency, ECS restarts, RDS vitals, endpoint health, Config drift), SNS topic, CloudWatch dashboard. | 6 |
+| **audit** | CloudTrail (multi-region, log-file validation, S3 + CloudWatch), AWS Config recorder, data event recording on document store, Config managed rules annotated to 800-53 controls, Bedrock model-invocation logging (metadata-only default, ADR-007). | 6 |
+| **observability** | Log-group factory (KMS mandatory, retention mandatory), platform alarm baseline (RDS vitals, endpoint health, CloudTrail tamper, Config drift), SNS topic, CloudWatch dashboard. Gateway request alarms (5xx/latency/task count) live in ecs-llm-gateway and consume this module's topic. | 6 |
 
 ---
 
@@ -135,7 +135,7 @@ graph LR
 **Root modules** (no dependencies): `network`, `kms`  
 **Mid-layer** (depend on roots): `iam`, `vector-store`, `document-store`  
 **Compute layer**: `ecs-llm-gateway` (depends on network, iam, kms, document-store for ALB access logs, observability for alarm topic)  
-**Audit layer**: `audit` (depends on kms, document-store for audit log bucket)  
+**Audit layer**: `audit` (depends on kms; document-store for the data-event scope and for access-log delivery of the audit bucket, which lives in the audit module alongside its trail-specific bucket policy)  
 **Observability layer**: `observability` (depends on kms for log-group encryption)  
 
 The `examples/` directories compose all modules together; there are no circular dependencies.
@@ -185,6 +185,9 @@ These output names are binding contracts: downstream modules consume them by nam
 |-------------|------|-------------|
 | `alb_dns_name` | string | Internal ALB DNS name (for in-VPC client requests) |
 | `alb_arn` | string | ALB ARN |
+| `alb_arn_suffix` | string | ALB ARN suffix (LoadBalancer CloudWatch dimension; consumed by observability dashboard) |
+| `target_group_arn_suffix` | string | Target group ARN suffix (TargetGroup CloudWatch dimension; consumed by observability dashboard) |
+| `cluster_name` | string | ECS cluster name (ClusterName CloudWatch dimension; consumed by observability dashboard) |
 | `alb_security_group_id` | string | Security group ID for the ALB |
 | `cluster_arn` | string | ECS cluster ARN |
 | `service_name` | string | ECS service name |
@@ -221,7 +224,10 @@ These output names are binding contracts: downstream modules consume them by nam
 |-------------|------|-------------|
 | `trail_arn` | string | CloudTrail trail ARN |
 | `config_recorder_name` | string | AWS Config recorder name |
-| `audit_log_group_name` | string | CloudWatch log group name for CloudTrail logs |
+| `audit_log_group_name` | string | CloudWatch log group name for CloudTrail logs (consumed by observability for the tamper metric filter) |
+| `audit_bucket_id` | string | Audit bucket ID (CloudTrail/Config/Bedrock log destination) |
+| `audit_bucket_arn` | string | Audit bucket ARN |
+| `bedrock_log_group_name` | string | CloudWatch log group name for Bedrock model-invocation logs (null when invocation logging disabled) |
 
 ### observability module outputs
 
