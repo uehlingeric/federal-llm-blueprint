@@ -221,6 +221,12 @@ run "cloudwatch_alarms_exist" {
     error_message = "Running task count alarm must exist"
   }
 
+  # Assert: latency alarm tracks p95 TargetResponseTime with the default threshold
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.latency_p95.metric_name == "TargetResponseTime" && aws_cloudwatch_metric_alarm.latency_p95.extended_statistic == "p95" && aws_cloudwatch_metric_alarm.latency_p95.threshold == 60
+    error_message = "Latency alarm must track p95 TargetResponseTime with the 60s default threshold"
+  }
+
   # Assert: Alarms have empty action lists when alarm_topic_arn is null (default)
   assert {
     condition     = length(aws_cloudwatch_metric_alarm.unhealthy_hosts.alarm_actions) == 0

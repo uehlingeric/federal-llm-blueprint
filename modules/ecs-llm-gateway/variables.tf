@@ -216,3 +216,14 @@ variable "alarm_topic_arn" {
   description = "SNS topic ARN for CloudWatch alarm notifications. When null, alarms are created but not wired to any topic."
   default     = null
 }
+
+variable "latency_p95_threshold_seconds" {
+  type        = number
+  description = "p95 TargetResponseTime threshold in seconds for the gateway latency alarm. Default 60: TargetResponseTime measures time to full response, and LLM completions routinely take tens of seconds — tune down for short-completion workloads."
+  default     = 60
+
+  validation {
+    condition     = var.latency_p95_threshold_seconds > 0
+    error_message = "latency_p95_threshold_seconds must be positive"
+  }
+}
