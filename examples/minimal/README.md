@@ -145,7 +145,7 @@ After `terraform apply`, the RDS pgvector database must be initialized with the 
 This example provisions:
 - 1 VPC: ~$0/month
 - 2 private subnets: ~$0/month
-- 10 interface VPC endpoints: ~$7–8/month each (biggest line item)
+- 11 interface VPC endpoints: ~$7–8/month each **per AZ** — ~$160/month across this example's 2 AZs (biggest line item)
 - 1 S3 gateway endpoint: ~$0/month
 - 1 internal ALB: ~$16–18/month
 - 1 ECS Fargate task (1 vCPU, 2 GB memory): ~$30–35/month (while running; shut down when not in use)
@@ -155,7 +155,7 @@ This example provisions:
 - 3 KMS CMKs (data, logs, secrets): ~$1/month each (~$3 total)
 - VPC Flow Logs: minimal cost
 
-**Estimated cost: ~$180–210/month (roughly $6–7/day)** while the stack is up. Interface endpoints, Fargate task, and RDS database dominate. Disable deletion protection and run `terraform destroy` when not in use (see Destroy section below). These are list-price estimates; the measured-cost document arrives in week 8.
+**Estimated cost: ~$270–300/month (roughly $9–10/day)** while the stack is up. Interface endpoints (billed per endpoint **per AZ**), RDS database, and the Fargate task dominate. Disable deletion protection and run `terraform destroy` when not in use (see Destroy section below). These are list-price estimates; [docs/costs.md](../../docs/costs.md) has the measured itemization.
 
 ### Cost Control in the LiteLLM Config
 

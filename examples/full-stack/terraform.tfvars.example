@@ -1,0 +1,58 @@
+# Full-stack demo profile
+# Copy to terraform.tfvars and adjust. Defaults in variables.tf are
+# production-shaped; this profile relaxes only what a demo deployment needs:
+# object lock (so terraform destroy can complete) and the ALB certificate
+# (self-signed instead of a private-PKI ACM certificate).
+
+project     = "fedllm"
+environment = "prod"
+region      = "us-east-1"
+
+# Three AZs is the production-shaped default. Interface endpoints bill per AZ
+# (11 endpoints x AZs x $0.01/hr) — drop to 2 to cut that line by a third.
+az_count = 3
+
+# Model the gateway serves. The inference profile must exist in the account
+# and the model must be enabled (Bedrock console -> Model access).
+bedrock_model_id             = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+bedrock_inference_profile_id = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+gateway_model_name           = "claude-sonnet-4-5"
+
+# LiteLLM container image, digest-pinned. In no-egress mode the image MUST live
+# in a private ECR repository (public registries are unreachable) — mirror it
+# first (see README "Mirror the gateway image"), then pin the PUSHED digest:
+#   aws ecr describe-images --repository-name litellm \
+#     --query 'imageDetails[0].imageDigest' --output text
+# (placeholder digest below is syntactically valid but fake)
+gateway_container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+# ECR repositories the task execution role may pull from (the mirrored image
+# repos — gateway plus any one-off task images, e.g. seed-vectors, curl)
+ecr_repository_arns = [
+  "arn:aws:ecr:us-east-1:123456789012:repository/litellm",
+]
+
+# Demo: self-signed ALB certificate. Production: set false and supply
+# certificate_arn from your private PKI (ACM Private CA — see docs/costs.md).
+create_self_signed_cert = true
+
+# Demo: object lock off so destroy can complete. Production keeps true —
+# GOVERNANCE-mode retention on the documents and audit buckets.
+enable_object_lock = false
+
+# CloudTrail Insights: off in the demo (per-event-analyzed pricing, docs/costs.md)
+enable_cloudtrail_insights = false
+
+# Alarm fan-out (empty = alarms fire into the topic with no subscribers)
+alarm_email_addresses = []
+
+# Production wiring examples (demo leaves both empty):
+# human_trust_principals = {
+#   platform-admin = ["arn:aws:iam::123456789012:role/IdP-Admin"]
+#   auditor        = ["arn:aws:iam::123456789012:role/IdP-Auditor"]
+# }
+# ci_trust_principal_arns = ["arn:aws:iam::123456789012:user/ci-deployer"]
+
+# Set both to false (and apply) before terraform destroy
+gateway_deletion_protection = true
+vector_deletion_protection  = true

@@ -1,3 +1,261 @@
-# Full-stack example root module
-# Complete composition with all modules, deploying the agentic-rag workload.
-# Composition completes in week-08.
+# Full-stack example: the complete composition with production-shaped defaults.
+# All eight modules — network, kms, iam, gateway, vector store, document store,
+# audit, observability — in no-egress mode, with the LiteLLM gateway as the
+# running workload. The demo profile (terraform.tfvars.example) relaxes only
+# the teardown-hostile toggles; module defaults stay production-shaped.
+
+data "aws_partition" "current" {}
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+provider "aws" {
+  region = var.region
+
+  default_tags {
+    tags = {
+      Project            = var.project
+      Environment        = var.environment
+      ManagedBy          = "terraform"
+      DataClassification = "cui"
+    }
+  }
+}
+
+locals {
+  bedrock_inference_profile_arn = "arn:${data.aws_partition.current.partition}:bedrock:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${var.bedrock_inference_profile_id}"
+  # Gateway config (stored as an SSM SecureString by the gateway module, per ADR-005).
+  # Must contain no secret values: the master key is injected separately from Secrets
+  # Manager as LITELLM_MASTER_KEY.
+  litellm_config = templatefile("${path.module}/litellm.yaml.tpl", {
+    model_name                   = var.gateway_model_name
+    bedrock_inference_profile_id = var.bedrock_inference_profile_id
+    region                       = data.aws_region.current.region
+  })
+}
+
+# KMS module: customer-managed CMKs for data, logs, and secrets
+module "kms" {
+  source = "../../modules/kms"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  tags = {
+    Example = "full-stack"
+  }
+}
+
+# Network module: no-egress VPC across three AZs, endpoints, security groups, flow logs
+module "network" {
+  source = "../../modules/network"
+
+  project              = var.project
+  environment          = var.environment
+  data_classification  = "cui"
+  no_egress            = true
+  enable_flow_logs     = true
+  flow_log_kms_key_arn = module.kms.key_arns["logs"]
+  vpc_cidr             = "10.0.0.0/16"
+  az_count             = var.az_count
+
+  # Retention aligned with the audit plane (AU-11)
+  flow_log_retention_days = 365
+
+  # Standard-mode variables (ignored when no_egress = true)
+  enable_public_subnets = false
+  enable_nat_gateway    = false
+
+  tags = {
+    Example = "full-stack"
+  }
+}
+
+# Document store module: S3 buckets for documents, access logs, and ALB logs.
+# Object lock defaults ON here (production posture); the demo profile disables
+# it so terraform destroy can complete.
+module "document_store" {
+  source = "../../modules/document-store"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  data_kms_key_arn = module.kms.key_arns["data"]
+
+  enable_object_lock = var.enable_object_lock
+
+  # The audit module logs its bucket into access-logs under this prefix
+  additional_logging_prefixes = ["audit"]
+
+  tags = {
+    Example = "full-stack"
+  }
+}
+
+# Vector store module: RDS pgvector, multi-AZ (module default), encrypted,
+# IAM database auth, enhanced monitoring and Performance Insights
+module "vector_store" {
+  source = "../../modules/vector-store"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  # Network
+  vpc_id                = module.network.vpc_id
+  private_subnet_ids    = module.network.private_subnet_ids
+  app_security_group_id = module.network.app_security_group_id
+
+  # Encryption keys
+  data_kms_key_arn    = module.kms.key_arns["data"]
+  secrets_kms_key_arn = module.kms.key_arns["secrets"]
+  logs_kms_key_arn    = module.kms.key_arns["logs"]
+
+  # Retention aligned with the audit plane (AU-11)
+  log_retention_days = 365
+
+  # Set false (and apply) before terraform destroy
+  deletion_protection = var.vector_deletion_protection
+
+  tags = {
+    Example = "full-stack"
+  }
+}
+
+# IAM module: boundary, task roles scoped to the real gateway/vector/document
+# resources, optional CI deploy role and human role tiers
+module "iam" {
+  source = "../../modules/iam"
+
+  project                        = var.project
+  environment                    = var.environment
+  data_classification            = "cui"
+  kms_key_arns                   = module.kms.key_arns
+  log_group_arns                 = [module.gateway.log_group_arn]
+  secret_arns                    = [module.gateway.master_key_secret_arn]
+  ssm_parameter_arns             = [module.gateway.config_parameter_arn]
+  ecr_repository_arns            = var.ecr_repository_arns
+  bedrock_model_ids              = [var.bedrock_model_id]
+  bedrock_inference_profile_arns = [local.bedrock_inference_profile_arn]
+
+  # Document store and vector store integration
+  document_bucket_arns          = [module.document_store.bucket_arns["documents"]]
+  document_bucket_read_prefixes = ["${module.document_store.bucket_arns["documents"]}/documents/*"]
+  document_key_prefixes         = ["documents/"]
+  db_resource_ids               = [module.vector_store.db_resource_id]
+  db_usernames                  = ["app_user"]
+
+  # Production wiring: SSO-backed human tiers and a CI deploy principal
+  human_trust_principals  = var.human_trust_principals
+  ci_trust_principal_arns = var.ci_trust_principal_arns
+
+  tags = {
+    Example = "full-stack"
+  }
+}
+
+# ECS LLM Gateway module: the running workload. Fargate service + internal ALB
+# serving OpenAI-compatible completions from Bedrock through the VPC endpoints.
+# The iam <-> gateway mutual references are resource-acyclic: gateway's log
+# group/secret/parameter feed iam's role *policies*, while the task definition
+# consumes iam's role ARNs (roles are created before their policies).
+module "gateway" {
+  source = "../../modules/ecs-llm-gateway"
+
+  project                    = var.project
+  environment                = var.environment
+  data_classification        = "cui"
+  vpc_id                     = module.network.vpc_id
+  vpc_cidr                   = module.network.vpc_cidr_block
+  private_subnet_ids         = module.network.private_subnet_ids
+  app_security_group_id      = module.network.app_security_group_id
+  task_execution_role_arn    = module.iam.task_execution_role_arn
+  app_task_role_arn          = module.iam.app_task_role_arn
+  logs_kms_key_arn           = module.kms.key_arns["logs"]
+  secrets_kms_key_arn        = module.kms.key_arns["secrets"]
+  container_image            = var.gateway_container_image
+  config_yaml                = local.litellm_config
+  certificate_arn            = var.certificate_arn
+  create_self_signed_cert    = var.create_self_signed_cert
+  alb_logs_bucket_id         = module.document_store.bucket_ids["alb-logs"]
+  enable_deletion_protection = var.gateway_deletion_protection
+
+  # HA posture: two tasks across AZs behind the ALB, scale-in floor to match
+  desired_count      = var.gateway_desired_count
+  min_capacity       = var.gateway_desired_count
+  log_retention_days = 365
+
+  # gateway <-> observability mutual references are resource-acyclic: gateway's
+  # alarms consume the SNS topic, while observability's dashboard consumes the
+  # ALB/cluster identifiers (same pattern as iam <-> gateway above).
+  alarm_topic_arn = module.observability.alarm_topic_arn
+
+  tags = {
+    Example = "full-stack"
+  }
+}
+
+# Audit module: CloudTrail (multi-region, KMS, log-file validation, S3 data
+# events on the documents bucket), AWS Config recorder + 800-53-annotated
+# rules, Bedrock model-invocation logging (metadata-only per ADR-007).
+# Object lock on the audit bucket defaults ON (production posture); the demo
+# profile disables it — same teardown trade-off as the documents bucket.
+module "audit" {
+  source = "../../modules/audit"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  logs_kms_key_arn      = module.kms.key_arns["logs"]
+  documents_bucket_arn  = module.document_store.bucket_arns["documents"]
+  access_logs_bucket_id = module.document_store.bucket_ids["access-logs"]
+
+  enable_object_lock = var.enable_object_lock
+
+  # CloudTrail Insights: anomaly detection billed per event analyzed (docs/costs.md)
+  enable_insights = var.enable_cloudtrail_insights
+
+  tags = {
+    Example = "full-stack"
+  }
+}
+
+# Observability module: SNS alarm topic (optionally email-subscribed), RDS
+# vitals, endpoint packet-drop canary, CloudTrail-tamper alarm, Config
+# noncompliance events, dashboard
+module "observability" {
+  source = "../../modules/observability"
+
+  project             = var.project
+  environment         = var.environment
+  data_classification = "cui"
+
+  logs_kms_key_arn = module.kms.key_arns["logs"]
+
+  alarm_email_addresses = var.alarm_email_addresses
+
+  # RDS vitals
+  db_instance_id = module.vector_store.db_instance_id
+
+  # No-egress canary: packet drops at the interface endpoints
+  vpc_id                 = module.network.vpc_id
+  interface_endpoint_ids = module.network.interface_endpoint_ids
+
+  # CloudTrail tamper detection reads the audit module's trail log group
+  cloudtrail_log_group_name = module.audit.audit_log_group_name
+
+  # Dashboard identifiers from the gateway (see acyclicity note on the gateway module)
+  alb_arn_suffix          = module.gateway.alb_arn_suffix
+  target_group_arn_suffix = module.gateway.target_group_arn_suffix
+  cluster_name            = module.gateway.cluster_name
+  service_name            = module.gateway.service_name
+
+  # Every alarm carries this RunbookUrl tag
+  runbook_url = "https://github.com/uehlingeric/federal-llm-blueprint/blob/master/modules/observability/README.md#runbooks"
+
+  tags = {
+    Example = "full-stack"
+  }
+}

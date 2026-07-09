@@ -65,8 +65,8 @@ EOF
 terraform init
 terraform plan -out=tfplan
 
-# Review the plan. Expected: network module creates ~8-10 interface endpoints, 1 S3 gateway endpoint, zero IGW/NAT.
-# Estimated cost: $0.07–0.10/hour (7–10 endpoints × $0.01/hr each).
+# Review the plan. Expected: network module creates 11 interface endpoints (default map), 1 S3 gateway endpoint, zero IGW/NAT.
+# Estimated cost: $0.11/hour per AZ (11 endpoints × $0.01/endpoint-hr/AZ) — $0.22/hour at az_count = 2.
 
 terraform apply tfplan
 ```
