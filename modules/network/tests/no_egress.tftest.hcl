@@ -70,8 +70,8 @@ run "no_egress_mode" {
   }
 
   assert {
-    condition     = alltrue([for k in ["bedrock-runtime", "bedrock-agent-runtime", "ecr-api", "ecr-dkr", "logs", "kms", "secretsmanager", "ecs", "ecs-telemetry", "sts"] : contains(keys(aws_vpc_endpoint.interface), k)])
-    error_message = "All ten default interface endpoints must be present in no-egress mode"
+    condition     = alltrue([for k in ["bedrock-runtime", "bedrock-agent-runtime", "ecr-api", "ecr-dkr", "logs", "kms", "secretsmanager", "ecs", "ecs-telemetry", "ssm", "sts"] : contains(keys(aws_vpc_endpoint.interface), k)])
+    error_message = "All eleven default interface endpoints must be present in no-egress mode"
   }
 
   assert {

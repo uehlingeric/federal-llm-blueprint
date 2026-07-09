@@ -157,7 +157,7 @@ These output names are binding contracts: downstream modules consume them by nam
 | `private_route_table_ids` | list(string) | Route table IDs for private subnets | audit (for Config rules, optional) |
 | `app_security_group_id` | string | SG for ECS tasks and application workloads | ecs-llm-gateway (task SG), vector-store (ingress rule) |
 | `endpoint_security_group_id` | string | SG for VPC endpoints (allows 443 from VPC CIDR) | (internal to network) |
-| `interface_endpoint_ids` | map(string) | Endpoint IDs keyed by service (bedrock-runtime, bedrock-agent-runtime, ecr-api, ecr-dkr, logs, kms, secretsmanager, ecs, ecs-telemetry, sts) | observability (for endpoint-health alarms) |
+| `interface_endpoint_ids` | map(string) | Endpoint IDs keyed by service (bedrock-runtime, bedrock-agent-runtime, ecr-api, ecr-dkr, logs, kms, secretsmanager, ecs, ecs-telemetry, ssm, sts) | observability (for endpoint-health alarms) |
 | `gateway_endpoint_ids` | map(string) | S3 and optional DynamoDB gateway endpoint IDs | (internal to network) |
 | `flow_log_group_name` | string | CloudWatch log group name for VPC flow logs | (internal, used by CloudWatch) |
 

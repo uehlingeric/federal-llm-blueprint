@@ -2,7 +2,7 @@
 
 ## Overview
 
-The network module establishes the foundational VPC infrastructure for the federal LLM blueprint. It deploys a private-subnet-only VPC across 2–3 availability zones with endpoint-based connectivity to AWS services required by the LLM stack: Bedrock (runtime and agent), S3, ECR, CloudWatch Logs, KMS, Secrets Manager, ECS, and STS.
+The network module establishes the foundational VPC infrastructure for the federal LLM blueprint. It deploys a private-subnet-only VPC across 2–3 availability zones with endpoint-based connectivity to AWS services required by the LLM stack: Bedrock (runtime and agent), S3, ECR, CloudWatch Logs, KMS, Secrets Manager, ECS, SSM Parameter Store, and STS.
 
 The module enforces a **provably no-egress mode** when `no_egress = true`: zero Internet Gateways, zero NAT Gateways, zero Elastic IPs, and zero public subnets. All AWS service traffic routes through secured VPC endpoints with private DNS resolution enabled. In this mode, the architecture is air-gap-ready and suitable for federal and GovCloud deployments. A supporting test suite verifies that these resources are absent (not merely "unused").
 
@@ -13,7 +13,7 @@ The module also supports a standard-private mode (`no_egress = false`) for corpo
 - **VPC Creation**: Private-subnet architecture across configurable AZs (2 or 3)
 - **Conditional Internet Gateway**: Present only in standard mode with public subnets enabled
 - **Conditional NAT Gateway**: Present only in standard mode with both public subnets and NAT enabled; single NAT is the default (per-AZ NAT is an alternative documented in the module)
-- **Interface VPC Endpoints**: Bedrock, S3, ECR, KMS, CloudWatch Logs, Secrets Manager, ECS, ECS-telemetry, STS, plus user-extensible map for services like SageMaker Runtime
+- **Interface VPC Endpoints**: Bedrock, S3, ECR, KMS, CloudWatch Logs, Secrets Manager, ECS, ECS-telemetry, SSM, STS, plus user-extensible map for services like SageMaker Runtime
 - **Gateway VPC Endpoints**: S3 (always) and DynamoDB (optional)
 - **Endpoint Security Group**: Restricts HTTPS (443) ingress from the VPC CIDR only
 - **Application Security Group**: Provides baseline egress rules for compute workloads — 443 to endpoints and S3 gateway, 5432 to vector store
@@ -87,6 +87,7 @@ This table enumerates the interface endpoints provided by default and their purp
 | `secretsmanager` | Secrets Manager | Interface | Retrieve gateway API keys and database credentials |
 | `ecs` | ECS Service Discovery | Interface | Discover tasks and retrieve task metadata |
 | `ecs-telemetry` | ECS Telemetry | Interface | Report container metrics to CloudWatch |
+| `ssm` | SSM Parameter Store | Interface | Fetch task configuration injected via ECS secrets (ADR-005) |
 | `sts` | STS (AssumeRole) | Interface | Assume IAM roles during task startup |
 | `s3` | Amazon S3 | Gateway | Read/write documents and access logs |
 | `dynamodb` | DynamoDB | Gateway | (Optional) Session caching or application state |
@@ -119,7 +120,7 @@ The module is designed to work across AWS partitions (standard, GovCloud, China)
 
 The primary cost drivers in this module are:
 
-- **Interface VPC Endpoints**: ~$7–8/month each. The default 10 endpoints cost ~$70–80/month. To reduce cost during development, disable unused endpoints:
+- **Interface VPC Endpoints**: ~$7–8/month each **per AZ** ($0.01/endpoint-hour/AZ). The default 11 endpoints across 2 AZs cost ~$160/month; 3 AZs, ~$240/month. To reduce cost during development, disable unused endpoints:
   ```hcl
   interface_endpoints = {
     "bedrock-runtime" = "bedrock-runtime"
@@ -236,7 +237,7 @@ No modules.
 | enable\_nat\_gateway | Enable NAT gateway for private-to-internet routing. Requires enable\_public\_subnets = true and no\_egress = false. | `bool` | `false` | no |
 | enable\_public\_subnets | Enable public subnets. Forbidden when no\_egress = true. | `bool` | `false` | no |
 | flow\_log\_retention\_days | CloudWatch Logs retention period for VPC flow logs (days) | `number` | `90` | no |
-| interface\_endpoints | Interface VPC endpoints to create, keyed by logical name to AWS service suffix (e.g., 'bedrock-runtime' -> 'bedrock-runtime'). Service name is com.amazonaws.{region}.{suffix}. Consumers can add entries (e.g., sagemaker.runtime) without forking the module. | `map(string)` | <pre>{<br/>  "bedrock-agent-runtime": "bedrock-agent-runtime",<br/>  "bedrock-runtime": "bedrock-runtime",<br/>  "ecr-api": "ecr.api",<br/>  "ecr-dkr": "ecr.dkr",<br/>  "ecs": "ecs",<br/>  "ecs-telemetry": "ecs-telemetry",<br/>  "kms": "kms",<br/>  "logs": "logs",<br/>  "secretsmanager": "secretsmanager",<br/>  "sts": "sts"<br/>}</pre> | no |
+| interface\_endpoints | Interface VPC endpoints to create, keyed by logical name to AWS service suffix (e.g., 'bedrock-runtime' -> 'bedrock-runtime'). Service name is com.amazonaws.{region}.{suffix}. Consumers can add entries (e.g., sagemaker.runtime) without forking the module. | `map(string)` | <pre>{<br/>  "bedrock-agent-runtime": "bedrock-agent-runtime",<br/>  "bedrock-runtime": "bedrock-runtime",<br/>  "ecr-api": "ecr.api",<br/>  "ecr-dkr": "ecr.dkr",<br/>  "ecs": "ecs",<br/>  "ecs-telemetry": "ecs-telemetry",<br/>  "kms": "kms",<br/>  "logs": "logs",<br/>  "secretsmanager": "secretsmanager",<br/>  "ssm": "ssm",<br/>  "sts": "sts"<br/>}</pre> | no |
 | no\_egress | Enable no-egress mode: zero IGW/NAT, endpoint-only connectivity. When true, public subnets and NAT gateways are disabled. | `bool` | `false` | no |
 | tags | Additional tags applied to all taggable resources | `map(string)` | `{}` | no |
 | vpc\_cidr | CIDR block for the VPC (default 10.0.0.0/16) | `string` | `"10.0.0.0/16"` | no |

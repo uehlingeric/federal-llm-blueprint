@@ -84,25 +84,25 @@ app_security_group_id = "sg-..."
 
 ### Step 2: Add SSM Endpoints (Temporary for Test)
 
-The default endpoint map in `modules/network` does not include Systems Manager endpoints (`ssm`, `ssmmessages`, `ec2messages`) — these are optional for steady-state but required for this probe.
+The default endpoint map in `modules/network` includes `ssm` (the gateway task fetches its configuration through it) but not the Session Manager channel endpoints (`ssmmessages`, `ec2messages`) — those are needed only for this probe.
 
-Temporarily add them to your `terraform.tfvars`:
+Temporarily add them to your `terraform.tfvars` (the map is logical-name → service suffix; restate the defaults you keep):
 
 ```bash
 cat >> terraform.tfvars <<'EOF'
 
-# Temporary: add SSM endpoints for probe connectivity only.
+# Temporary: add Session Manager channel endpoints for probe connectivity only.
 # Remove after this test completes.
 interface_endpoints = {
-  "ssm"          = true
-  "ssmmessages"  = true
-  "ec2messages"  = true
-  # ... existing endpoints from module defaults
+  ssm         = "ssm"
+  ssmmessages = "ssmmessages"
+  ec2messages = "ec2messages"
+  # ... plus the existing entries from the module default map
 }
 EOF
 
 terraform apply
-# Creates 3 additional endpoints (~$0.03/hr more).
+# Creates 2 additional endpoints (~$0.02/hr more).
 ```
 
 ### Step 3: Launch Probe Instance
