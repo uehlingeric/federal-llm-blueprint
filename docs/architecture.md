@@ -274,7 +274,7 @@ No-egress mode is the headline property of this architecture. It is **not** just
 |-------------|-------------------|-------|
 | Bedrock Runtime | Interface (bedrock-runtime) | Private DNS: bedrock-runtime.{region}.amazonaws.com → endpoint ENI; iam auth via SigV4 |
 | Bedrock Agent | Interface (bedrock-agent-runtime) | Private DNS resolution to endpoint ENI |
-| S3 | Gateway | Route table entry: AWS-managed S3 prefix list (pl-xxxx) → vpce-xxxx; endpoint policy scoped to in-account buckets |
+| S3 | Gateway | Route table entry: AWS-managed S3 prefix list (pl-xxxx) → vpce-xxxx; endpoint policy scoped to in-account buckets + read-only ECR layer bucket (image pulls) |
 | ECR (Image pull) | Interface (ecr.api + ecr.dkr) | Docker pull uses private DNS; no NAT required |
 | CloudWatch Logs | Interface (logs) | Log writes from tasks via private DNS |
 | KMS | Interface | Key operations (Decrypt, GenerateDataKey) via private DNS |
@@ -405,7 +405,7 @@ This reference explicitly does **not** cover:
 - **Multi-region and disaster recovery:** Single-region architecture only. Cross-region replication of S3 backups and RDS snapshots is optional and documented in week 5; active-active geo-failover is out of scope.
 - **IL5+ and SCIF physical controls:** This architecture assumes the hosting organization provides secure-facility controls. IL5 markings and SCIF-specific networking (TEMPEST shielding, physically isolated networks) are not addressed.
 - **FedRAMP Authority-to-Operate (ATO) package:** The `CONTROLS.md` file maps controls; drafting the full ATO submission is the consuming organization's responsibility. This repo is a technical artifact, not a compliance package.
-- **Application-layer LLM guardrails (prompt injection, output filtering):** These are workload concerns. See the companion [agentic-rag](https://github.com/uehlingeric/agentic-rag) project for reference guardrail patterns.
+- **Application-layer LLM guardrails (prompt injection, output filtering):** These are workload concerns. See the companion `agentic-rag` project for reference guardrail patterns.
 - **SIEM integration:** CloudWatch Logs are the observability sink. Integration with Splunk, Datadog, or other SIEMs is user responsibility and requires network egress negotiation.
 - **Human-access networking (Client VPN, Direct Connect):** The architecture assumes users can reach the VPC via their organization's network. Provisioning Client VPN endpoints or AWS Direct Connect is the responsibility of the consuming organization's networking team.
 

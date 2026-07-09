@@ -75,6 +75,23 @@ data "aws_iam_policy_document" "s3_endpoint" {
       values   = [data.aws_caller_identity.current.account_id]
     }
   }
+
+  # ECR stores image layers in an AWS-owned regional bucket; Fargate pulls
+  # fetch layers from it THROUGH this endpoint. Without this read-only
+  # exception every task launch fails with CannotPullContainerError — the
+  # in-account condition above cannot match an AWS-owned bucket. Bucket name
+  # per AWS ECR docs ("Minimum Amazon S3 bucket permissions for Amazon ECR").
+  statement {
+    sid       = "AllowEcrLayerBucketRead"
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:${data.aws_partition.current.partition}:s3:::prod-${data.aws_region.current.region}-starport-layer-bucket/*"]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+  }
 }
 
 # DynamoDB Gateway Endpoint (optional)
