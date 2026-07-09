@@ -229,7 +229,7 @@ module "observability" {
   service_name            = module.gateway.service_name
 
   # Every alarm carries this RunbookUrl tag
-  runbook_url = "https://github.com/uehlingeric/federal-llm-blueprint/blob/master/modules/observability/README.md#runbooks"
+  runbook_url = "https://github.com/uehlingeric/federal-llm-blueprint/blob/master/modules/observability/README.md"
 
   tags = {
     Example = "minimal"

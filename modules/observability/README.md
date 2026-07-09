@@ -151,7 +151,7 @@ No modules.
 | rds\_connections\_threshold | CloudWatch alarm threshold for RDS database connections. Flat default; tune to instance-class max\_connections | `number` | `100` | no |
 | rds\_cpu\_threshold\_percent | CloudWatch alarm threshold for RDS CPU utilization (percent) | `number` | `80` | no |
 | rds\_free\_storage\_threshold\_bytes | CloudWatch alarm threshold for RDS free storage space (bytes). Default: 10 GiB | `number` | `10737418240` | no |
-| runbook\_url | When set, every alarm carries a RunbookUrl tag pointing to operational runbooks | `string` | `null` | no |
+| runbook\_url | When set, every alarm carries a RunbookUrl tag pointing to operational runbooks. Must fit the CloudWatch tag-value character set (letters, numbers, spaces, \_ . : / = + - @) — notably no # fragment, which PutMetricAlarm rejects at apply time. | `string` | `null` | no |
 | service\_name | ECS service name for dashboard task health metrics. When set with cluster\_name, ECS health widgets are rendered | `string` | `null` | no |
 | tags | Additional tags to apply to resources | `map(string)` | `{}` | no |
 | target\_group\_arn\_suffix | Target group ARN suffix for dashboard gateway metrics. When set, TargetGroup dimension is added to gateway metric widgets | `string` | `null` | no |

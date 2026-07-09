@@ -57,6 +57,16 @@ run "expect_failure_retention_zero" {
   expect_failures = [var.log_groups]
 }
 
+run "expect_failure_runbook_url_with_fragment" {
+  command = plan
+
+  variables {
+    runbook_url = "https://github.com/example/repo/blob/master/README.md#runbooks"
+  }
+
+  expect_failures = [var.runbook_url]
+}
+
 run "expect_failure_retention_invalid_value" {
   command = plan
 

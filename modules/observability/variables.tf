@@ -59,8 +59,13 @@ variable "alarm_email_addresses" {
 
 variable "runbook_url" {
   type        = string
-  description = "When set, every alarm carries a RunbookUrl tag pointing to operational runbooks"
+  description = "When set, every alarm carries a RunbookUrl tag pointing to operational runbooks. Must fit the CloudWatch tag-value character set (letters, numbers, spaces, _ . : / = + - @) — notably no # fragment, which PutMetricAlarm rejects at apply time."
   default     = null
+
+  validation {
+    condition     = var.runbook_url == null || can(regex("^[A-Za-z0-9 _.:/=+@-]*$", coalesce(var.runbook_url, "")))
+    error_message = "runbook_url may only contain characters CloudWatch tag values allow (letters, numbers, spaces, _ . : / = + - @); URL fragments (#...) are rejected by PutMetricAlarm"
+  }
 }
 
 variable "db_instance_id" {
