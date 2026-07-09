@@ -39,8 +39,10 @@ def generate_iam_auth_token() -> str:
     user = os.getenv("DB_USER", "app_user")
 
     client = boto3.client("rds", region_name=region)
+    # boto3 signature: generate_db_auth_token(DBHostname, Port, DBUsername, Region)
+    # — DBUsername, not DBUser (TypeError at runtime otherwise)
     token = client.generate_db_auth_token(
-        DBHostname=host, Port=int(port), DBUser=user, Region=region
+        DBHostname=host, Port=int(port), DBUsername=user, Region=region
     )
     return token
 
