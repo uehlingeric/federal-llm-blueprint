@@ -28,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **examples/minimal**: Sandbox cost profile demonstrating core modules in a no-egress configuration
 - **examples/full-stack**: Production-shaped profile with full audit, observability, and cost-modeling documentation
 
-#### Testing & CI (120 tests)
+#### Testing & CI (121 tests)
 
 - Terraform native tests (terraform test) with mock_provider patterns across all 8 modules
 - CI pipeline gates: terraform fmt, terraform validate, tflint, checkov (no repo-wide skips; every skip inline-justified), terraform-docs drift detection, control-reference consistency check, OSCAL freshness check

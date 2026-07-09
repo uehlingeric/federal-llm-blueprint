@@ -1,58 +1,103 @@
 # Federal LLM Blueprint
 
-Terraform reference architecture for running LLM workloads in federal environments — no-egress networking, KMS encryption everywhere, structured audit logging, and an explicit NIST 800-53 rev5 control mapping. Deployable in commercial AWS; designed for AWS GovCloud.
+Terraform reference architecture for LLM workloads in federal environments — a no-egress VPC, customer-managed KMS everywhere, five audited operational planes, and an explicit [NIST 800-53 rev5 control mapping](CONTROLS.md). Deployable in commercial AWS; designed for AWS GovCloud.
 
-**Status: private build phase — target public launch v0.1.0 on August 30, 2026.**
-
-## Why This Exists
-
-Reference architectures for LLM systems assume open internet and SaaS observability. Federal deployments assume the opposite: private connectivity, customer-managed keys, auditable everything, and an ATO process that wants to know which control every design decision satisfies. Nobody publishes that reference. This is it.
-
-## Planned Architecture
+[![CI](https://github.com/uehlingeric/federal-llm-blueprint/actions/workflows/ci.yml/badge.svg)](https://github.com/uehlingeric/federal-llm-blueprint/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Terraform](https://img.shields.io/badge/Terraform-%E2%89%A5%201.9-844FBA?logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
+[![AWS Provider](https://img.shields.io/badge/AWS%20Provider-~%3E%206.0-FF9900?logo=amazonwebservices&logoColor=white)](https://registry.terraform.io/providers/hashicorp/aws/latest)
+[![NIST 800-53 rev5](https://img.shields.io/badge/NIST%20800--53%20rev5-24%20controls%20mapped-2E7D32)](CONTROLS.md)
 
 ```mermaid
 flowchart TB
-    subgraph VPC [VPC — no internet gateway in no-egress mode]
-        subgraph Private [Private subnets]
-            GW[LLM Gateway<br/>ECS Fargate]
-            APP[RAG workload<br/>ECS Fargate]
-            DB[(RDS Postgres<br/>+ pgvector)]
+    subgraph VPC ["VPC — zero IGW/NAT in no-egress mode"]
+        subgraph Private ["Private subnets (2–3 AZs)"]
+            ALB[Internal ALB<br/>TLS] --> GW[LLM Gateway<br/>ECS Fargate · LiteLLM]
+            APP[RAG workload<br/>agentic-rag · post-v0.1.0]:::planned -.-> ALB
+            DB[(RDS Postgres 16<br/>+ pgvector)]
         end
-        EP[VPC endpoints:<br/>Bedrock · S3 · ECR · KMS · CloudWatch]
+        EP[11 interface endpoints:<br/>Bedrock · ECR · KMS · Logs · SSM · Secrets · ECS · STS]
+        GW --> EP
     end
-    APP --> GW
-    GW --> EP
-    APP --> DB
-    S3[(Document store<br/>S3 + access logs)] --- EP
-    AUDIT[CloudTrail + AWS Config<br/>+ structured audit logs] -.observes.-> VPC
-    KMS[KMS CMKs<br/>rotation enabled] -.encrypts.-> DB & S3 & AUDIT
+    EP --> BR[Amazon Bedrock]
+    S3[(Documents + logs<br/>S3, versioned)] --- EP
+    AUDIT[CloudTrail + AWS Config<br/>+ Bedrock invocation logs] -.observes.-> VPC
+    KMS[3 CMK domains<br/>data / logs / secrets] -.encrypts.-> DB & S3 & AUDIT
+    classDef planned stroke-dasharray: 5 5
 ```
 
-- **Modules:** network, kms, iam, ecs-llm-gateway, vector-store, document-store, audit, observability
-- **Modes:** `no_egress = true` (VPC-endpoint-only, the GovCloud/air-gap posture) or standard private
-- **Compliance:** [CONTROLS.md](CONTROLS.md) maps every module to NIST 800-53 rev5 controls (AC, AU, CM, IA, RA, SC, SI), mirrored machine-readably in [docs/controls.yaml](docs/controls.yaml) and generated as an [OSCAL component definition](docs/oscal/component-definition.json) for SSP tooling; [threat model](docs/threat-model.md) and [air-gap/GovCloud guide](docs/airgap-guide.md) included
-- **Proof:** the full-stack example deploys [agentic-rag](https://github.com/uehlingeric/agentic-rag) as the workload
+## Control Coverage
 
-## Build Roadmap
+[CONTROLS.md](CONTROLS.md) maps 24 NIST 800-53 rev5 controls with implementation statements and resource-level citations, mirrored machine-readably in [docs/controls.yaml](docs/controls.yaml) and generated as an [OSCAL component definition](docs/oscal/component-definition.json) for SSP tooling. CI enforces that all three stay in sync.
 
-| Week | Dates (2026) | Theme | Plan |
-|------|--------------|-------|------|
-| 1 | Jul 6 – Jul 12 | Foundations: standards, skeleton, CI, architecture doc | [week-01](docs/plan/week-01.md) |
-| 2 | Jul 13 – Jul 19 | Network module: VPC, endpoints, no-egress mode | [week-02](docs/plan/week-02.md) |
-| 3 | Jul 20 – Jul 26 | Security core: KMS, IAM/RBAC, secrets | [week-03](docs/plan/week-03.md) |
-| 4 | Jul 27 – Aug 2 | Compute: ECS Fargate LLM gateway | [week-04](docs/plan/week-04.md) |
-| 5 | Aug 3 – Aug 9 | Data layer: pgvector store + document store | [week-05](docs/plan/week-05.md) |
-| 6 | Aug 10 – Aug 16 | Audit & observability: CloudTrail, Config, alarms | [week-06](docs/plan/week-06.md) |
-| 7 | Aug 17 – Aug 23 | Compliance docs: CONTROLS.md, threat model, air-gap guide | [week-07](docs/plan/week-07.md) |
-| 8 | Aug 24 – Aug 30 | Launch: full-stack example, cost doc, v0.1.0 public | [week-08](docs/plan/week-08.md) |
+| Family | Controls | Implemented across |
+|---|---|---|
+| AC — Access Control | 4 | iam, network, ecs-llm-gateway, vector-store, document-store, audit |
+| AU — Audit & Accountability | 6 | audit, observability, vector-store |
+| CM — Configuration Management | 3 | CI gates, audit (Config rules) |
+| IA — Identification & Authentication | 2 | iam, kms, vector-store |
+| RA — Risk Assessment | 1 | CI security scanning (checkov) |
+| SC — System & Communications Protection | 7 | network, kms, iam, ecs-llm-gateway, vector-store, document-store, audit, observability |
+| SI — System & Information Integrity | 1 | observability, audit, network, ecs-llm-gateway |
 
-## Launch Success Criteria
+## What This Is (and Isn't)
 
-- [ ] `terraform apply` on the full-stack example deploys a working, cited-answer RAG stack in a no-egress VPC
-- [ ] CONTROLS.md maps all modules to specific 800-53 rev5 controls with implementation notes
-- [ ] CI green: fmt + validate + tflint + checkov (zero high/critical findings) + terraform-docs current
-- [ ] Threat model and air-gap deployment guide published
-- [ ] Documented monthly cost estimate for minimal and full-stack examples
+**It is** a reference architecture: eight production-shaped Terraform modules, two runnable compositions, a [STRIDE threat model](docs/threat-model.md), an [air-gap/GovCloud guide](docs/airgap-guide.md), and executable [verification procedures](docs/verification/). Control language is deliberate — the stack *is aligned to* controls and *implements* or *contributes to* them; detective controls *flag*, never prevent.
+
+**It is not** an ATO package. No reference architecture makes you compliant; your SSP, your assessor, and your deployment's specifics do. The [threat model](docs/threat-model.md) and CONTROLS.md responsibility columns say exactly what is inherited from AWS, what the stack implements, and what remains yours.
+
+## Quickstart
+
+Prerequisites: Terraform ≥ 1.9, AWS credentials for a sandbox account, the target Bedrock model enabled (console → Model access), and the LiteLLM image mirrored into private ECR (no-egress VPCs cannot reach public registries — [procedure](examples/minimal/README.md#container-image-mirror-to-ecr-then-pin)).
+
+```bash
+cd examples/minimal
+cp terraform.tfvars.example terraform.tfvars   # set your mirrored image digest
+terraform init && terraform apply
+# populate the gateway master key, then prove it end to end:
+# docs/verification/gateway-proof.md
+```
+
+| Composition | Profile | Measured cost |
+|---|---|---|
+| [examples/minimal](examples/minimal/) | 2 AZs, single-AZ RDS, 90-day retention | [docs/costs.md](docs/costs.md) |
+| [examples/full-stack](examples/full-stack/) | 3 AZs, multi-AZ RDS, 365-day retention, HA gateway, all toggles surfaced | [docs/costs.md](docs/costs.md) |
+
+## Modules
+
+| Module | What it owns |
+|---|---|
+| [network](modules/network/) | No-egress VPC, 11 interface endpoints + S3 gateway, flow logs, app/endpoint SGs |
+| [kms](modules/kms/) | Three CMK domains (data/logs/secrets), rotation, least-privilege key policies |
+| [iam](modules/iam/) | Permission boundary, task roles, optional CI role and MFA-gated human tiers |
+| [ecs-llm-gateway](modules/ecs-llm-gateway/) | Fargate LiteLLM service, hardened tasks, internal TLS ALB, autoscaling, alarms |
+| [vector-store](modules/vector-store/) | RDS Postgres 16 + pgvector, IAM DB auth, RDS-managed secret, multi-AZ |
+| [document-store](modules/document-store/) | Documents/access-logs/ALB-logs buckets, SSE-KMS, optional object lock |
+| [audit](modules/audit/) | CloudTrail (multi-region, data events), AWS Config + annotated rules, Bedrock invocation logging |
+| [observability](modules/observability/) | Alarm baseline, log-group factory, Config-noncompliance events, dashboard, SNS |
+
+Every module: native `terraform test` suite (121 runs total), checkov-clean with inline-justified skips only, terraform-docs-current README, tested against the Terraform 1.9.8 floor.
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — five planes, interface contracts, no-egress invariants, data flows
+- [Threat model](docs/threat-model.md) — STRIDE across the five planes, LLM-specific threats
+- [Air-gap / GovCloud guide](docs/airgap-guide.md) — partition differences, availability caveats, true-air-gap posture
+- [Audit correlation](docs/audit-correlation.md) — tracing a request across gateway, Bedrock, and CloudTrail planes
+- [Costs](docs/costs.md) — measured run-rates, the four expensive toggles, cheap-mode alternatives
+- [ADRs](docs/adr/) — seven decision records, Fargate-over-EKS through prompt-capture posture
+- [Verification](docs/verification/) — executable proofs: no-egress, gateway, vector store, audit walkthrough, full stack
+
+## The Companion Workload
+
+This repo is one half of a pair:
+
+- **`agentic-rag`** — the workload this infrastructure is designed to run: provider-agnostic agentic RAG with hybrid retrieval, guardrails, and published evals. It publishes separately; its container integration into `examples/full-stack` lands post-v0.1.0.
+- **federal-llm-blueprint** (this repo) — the infrastructure that runs it: the no-egress network, the audited data planes, and the control mapping the workload inherits.
+
+## Build History
+
+Built in eight planned weeks, one plane at a time — plans in [docs/plan/](docs/plan/): foundations & CI, network, security core, compute, data, audit & observability, compliance docs, launch. The [CHANGELOG](CHANGELOG.md) records what shipped.
 
 ## License
 
