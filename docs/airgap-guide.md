@@ -40,7 +40,7 @@ bedrock_inference_profile_arn = "arn:${data.aws_partition.current.partition}:bed
 | **ECS/Fargate** | Cluster + Tasks | Yes | Yes | Standard GovCloud service (pattern: all standard AWS services available) |
 | **RDS PostgreSQL** | Postgres 16 + pgvector | **Verify** | **Verify** | pgvector extension: **verify at deployment time** |
 | **S3** | Bucket + Gateway Endpoint | Yes | Yes | Standard GovCloud service |
-| **VPC Endpoints** | bedrock-runtime, bedrock-agent-runtime, s3, ecr.api, ecr.dkr, logs, kms, secretsmanager, ecs, ecs-telemetry, sts | Yes | Yes | Service names: `com.amazonaws.us-gov-{east,west}-1.{service}` |
+| **VPC Endpoints** | bedrock-runtime, bedrock-agent-runtime, s3, ecr.api, ecr.dkr, logs, kms, secretsmanager, ecs, ecs-telemetry, ssm, sts | Yes | Yes | Service names: `com.amazonaws.us-gov-{east,west}-1.{service}` |
 | **KMS** | Customer-managed keys | Yes | Yes | Standard service; CMK ARNs use `arn:aws-us-gov:kms:...` |
 | **CloudTrail** | Multi-region recording, log-file validation | Yes | Yes | Standard GovCloud service |
 | **AWS Config** | Recorder + managed rules | Yes | Yes | Standard GovCloud service |

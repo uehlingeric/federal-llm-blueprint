@@ -93,6 +93,7 @@ variable "interface_endpoints" {
     secretsmanager        = "secretsmanager"
     ecs                   = "ecs"
     ecs-telemetry         = "ecs-telemetry"
+    ssm                   = "ssm"
     sts                   = "sts"
   }
 }
