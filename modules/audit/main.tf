@@ -540,7 +540,12 @@ resource "aws_config_config_rule" "rules" {
     local.common_tags,
     var.tags,
     {
-      Nist80053Controls = join(",", each.value.controls)
+      # Space-separated, enhancement ids in the dotted OSCAL form (SC-8.1,
+      # not SC-8(1)): PutConfigRule validates tag values against the
+      # restricted AWS charset (letters, numbers, spaces, _ . : / = + - @),
+      # rejecting both commas and parentheses with
+      # InvalidParameterValueException
+      Nist80053Controls = join(" ", [for c in each.value.controls : replace(replace(c, "(", "."), ")", "")])
     }
   )
 }
