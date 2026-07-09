@@ -27,6 +27,7 @@ resource "aws_s3_bucket" "audit" {
   #checkov:skip=CKV_AWS_144: Single-region reference architecture; cross-region replication is a deployment decision.
   #checkov:skip=CKV2_AWS_62: No event-notification consumers exist; this bucket is a log-delivery destination. Enabling CloudTrail data events on it would recurse. Tamper evidence comes from object lock + log-file validation.
   bucket              = local.audit_bucket_name
+  force_destroy       = var.force_destroy
   object_lock_enabled = var.enable_object_lock
 
   tags = merge(

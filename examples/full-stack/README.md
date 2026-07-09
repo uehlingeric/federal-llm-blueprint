@@ -70,7 +70,7 @@ Measured itemization for this exact composition: [docs/costs.md](../../docs/cost
 
 ## Destroy
 
-Object lock must be off (demo profile default). Deletion protection is on by default — flip it first, then destroy, then sweep:
+Object lock must be off and `force_destroy_buckets = true` (both demo-profile defaults) — CloudTrail and the ALB deliver objects continuously, so destroy cannot empty the versioned log buckets without it. Deletion protection is on by default — flip it first, then destroy, then sweep:
 
 ```bash
 # 1. Allow deletion

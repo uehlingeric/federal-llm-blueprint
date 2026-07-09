@@ -23,7 +23,8 @@ locals {
 resource "aws_s3_bucket" "documents" {
   #checkov:skip=CKV_AWS_144: Single-region reference architecture; cross-region replication is a deployment decision documented in the module README.
   #checkov:skip=CKV2_AWS_62: No bucket event notification consumers exist; audit trail provided by CloudTrail data events (week-6 audit module).
-  bucket = local.documents_bucket_name
+  bucket        = local.documents_bucket_name
+  force_destroy = var.force_destroy
 
   # Object lock must be declared at creation; the retention rule itself is the
   # count-guarded aws_s3_bucket_object_lock_configuration below.
@@ -178,7 +179,8 @@ resource "aws_s3_bucket" "access_logs" {
   #checkov:skip=CKV_AWS_18: Access logs bucket exists to store logs from documents and ALB; logging this bucket would create infinite recursion. The documents bucket (above) has comprehensive access logging and encryption; audit of access to this logs bucket is provided by CloudTrail data events (week-6 audit module). Standard logs-of-logs termination reasoning applies: finite regress requires audit trail delegation to higher-level service (CloudTrail data events).
   #checkov:skip=CKV_AWS_144: Single-region reference architecture; cross-region replication is a deployment decision documented in the module README.
   #checkov:skip=CKV2_AWS_62: No bucket event notification consumers exist; audit trail provided by CloudTrail data events (week-6 audit module).
-  bucket = local.access_logs_bucket_name
+  bucket        = local.access_logs_bucket_name
+  force_destroy = var.force_destroy
 
   tags = merge(
     local.common_tags,
@@ -251,7 +253,8 @@ resource "aws_s3_bucket" "alb_logs" {
   #checkov:skip=CKV_AWS_18: ALB logs bucket is a log destination; logging itself would create infinite recursion. Audit trail for this bucket is provided by CloudTrail data events (week-6 audit module). Standard logs-of-logs termination reasoning applies.
   #checkov:skip=CKV_AWS_144: Single-region reference architecture; cross-region replication is a deployment decision documented in the module README.
   #checkov:skip=CKV2_AWS_62: No bucket event notification consumers exist; audit trail provided by CloudTrail data events (week-6 audit module).
-  bucket = local.alb_logs_bucket_name
+  bucket        = local.alb_logs_bucket_name
+  force_destroy = var.force_destroy
 
   tags = merge(
     local.common_tags,

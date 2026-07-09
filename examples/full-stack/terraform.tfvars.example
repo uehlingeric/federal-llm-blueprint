@@ -56,3 +56,8 @@ alarm_email_addresses = []
 # Set both to false (and apply) before terraform destroy
 gateway_deletion_protection = true
 vector_deletion_protection  = true
+
+# Demo teardown aid: lets destroy empty the log-delivery buckets (CloudTrail
+# and the ALB deliver objects continuously, so destroy fails without it).
+# Production keeps false.
+force_destroy_buckets = true

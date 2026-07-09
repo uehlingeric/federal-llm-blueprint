@@ -140,3 +140,9 @@ variable "enable_analytics" {
   description = "Enable storage-class analysis on documents bucket. Generates daily analytics report (sample rate configurable by AWS). Useful for cost optimization. Default false."
   default     = false
 }
+
+variable "force_destroy" {
+  type        = bool
+  description = "Allow terraform destroy to empty the buckets (all object versions) first. Sandbox teardown aid — log-delivery buckets receive objects continuously, so destroy reliably fails without it. Production keeps false; incompatible with the intent of object lock."
+  default     = false
+}

@@ -115,3 +115,9 @@ variable "vector_deletion_protection" {
   description = "Deletion protection on the vector-store RDS instance. Set false and apply before terraform destroy (see README teardown procedure)."
   default     = true
 }
+
+variable "force_destroy_buckets" {
+  type        = bool
+  description = "Allow destroy to empty the S3 buckets (all versions) first. Demo teardown aid; production keeps false."
+  default     = false
+}

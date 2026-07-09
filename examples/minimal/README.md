@@ -190,9 +190,15 @@ Deletion protection is enabled on the gateway ALB and the vector-store RDS insta
    ```
    (Or set them in `terraform.tfvars`; defaults are `true`.)
 
-2. Destroy:
+2. Destroy (with the bucket-emptying aid — CloudTrail and the ALB deliver
+   objects continuously, so the versioned log buckets cannot delete without it):
    ```bash
-   terraform destroy
+   terraform destroy -var 'force_destroy_buckets=true'
+   ```
+
+3. Verify nothing billable remains:
+   ```bash
+   ../../scripts/verify-teardown.sh -p fedllm -e dev -r us-east-1
    ```
 
 ## Known Gotchas

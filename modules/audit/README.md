@@ -120,6 +120,7 @@ No modules.
 | enable\_full\_content\_logging | When false, only invocation metadata (model id, timestamps, token counts, identity) is logged; prompt/response bodies are excluded. See ADR-007 (docs/adr/007-prompt-capture-posture.md) | `bool` | `false` | no |
 | enable\_insights | Enable CloudTrail Insights (adds per-event analysis charges) | `bool` | `false` | no |
 | enable\_object\_lock | Enable S3 Object Lock on the audit bucket (prevents deletion and shortening of retention periods) | `bool` | `true` | no |
+| force\_destroy | Allow terraform destroy to empty the audit bucket (all object versions) first. Sandbox teardown aid — CloudTrail/Config deliver continuously, so destroy reliably fails without it. Production keeps false; incompatible with the intent of object lock. | `bool` | `false` | no |
 | include\_global\_resource\_types | Include global resource types (IAM, etc.) in Config recording. Enable in exactly ONE region per account to avoid duplicate configuration items. | `bool` | `true` | no |
 | object\_lock\_mode | S3 Object Lock retention mode (GOVERNANCE or COMPLIANCE) | `string` | `"GOVERNANCE"` | no |
 | object\_lock\_retention\_days | S3 Object Lock default retention period (days) | `number` | `30` | no |

@@ -163,3 +163,9 @@ variable "abort_incomplete_multipart_days" {
     error_message = "abort_incomplete_multipart_days must be greater than 0"
   }
 }
+
+variable "force_destroy" {
+  type        = bool
+  description = "Allow terraform destroy to empty the audit bucket (all object versions) first. Sandbox teardown aid — CloudTrail/Config deliver continuously, so destroy reliably fails without it. Production keeps false; incompatible with the intent of object lock."
+  default     = false
+}

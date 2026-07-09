@@ -75,6 +75,9 @@ module "document_store" {
   # Encryption: use the KMS data key for documents
   data_kms_key_arn = module.kms.key_arns["data"]
 
+  # Sandbox teardown aid: log-delivery buckets receive objects continuously
+  force_destroy = var.force_destroy_buckets
+
   # No object lock in sandbox (see module README for irreversibility warning)
 
   # The audit module logs its bucket into access-logs under this prefix
@@ -191,6 +194,7 @@ module "audit" {
   logs_kms_key_arn      = module.kms.key_arns["logs"]
   documents_bucket_arn  = module.document_store.bucket_arns["documents"]
   access_logs_bucket_id = module.document_store.bucket_ids["access-logs"]
+  force_destroy         = var.force_destroy_buckets
 
   # No object lock in sandbox (module default is true; production compositions
   # keep it — same teardown trade-off as the documents bucket above)
