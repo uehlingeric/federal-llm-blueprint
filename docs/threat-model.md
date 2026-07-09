@@ -1,7 +1,7 @@
 # Threat Model — Federal LLM Blueprint
 
 **Status:** Active | **Last Updated:** 2026-07-04  
-**Scope:** Infrastructure-layer controls (five operational planes). Application-layer mitigations (RAG orchestration, prompt construction) are owned by the companion [agentic-rag](https://github.com/uehlingeric/agentic-rag) project.
+**Scope:** Infrastructure-layer controls (five operational planes). Application-layer mitigations (RAG orchestration, prompt construction) are owned by the companion `agentic-rag` project.
 
 ---
 

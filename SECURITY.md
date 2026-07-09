@@ -36,7 +36,7 @@ Vulnerabilities in:
 ### Out of Scope
 
 - **Individual deployment misconfigurations**: if you misconfigure a variable or skip a required input, security issues in your deployed stack are your responsibility
-- **Application-layer vulnerabilities**: prompt injection, output filtering, model-specific safety (see [agentic-rag](https://github.com/uehlingeric/agentic-rag) for application concerns)
+- **Application-layer vulnerabilities**: prompt injection, output filtering, model-specific safety (see `agentic-rag` for application concerns)
 - **AWS service vulnerabilities**: report those to AWS Security
 - **Operational security**: If you store state in an unencrypted bucket or share credentials, that's a deployment issue, not a reference-architecture issue
 

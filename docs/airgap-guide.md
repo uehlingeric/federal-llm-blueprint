@@ -114,7 +114,7 @@ The **architecture pattern** is portable:
 - Append-only audit trail (CloudTrail → S3 bucket with object lock)
 - Role-based access (IAM database auth, scoped S3 prefixes)
 
-**Companion project:** [`agentic-rag`](https://github.com/uehlingeric/agentic-rag) demonstrates **model-layer substitution**: LiteLLM's provider abstraction points to self-hosted vLLM or Ollama (instead of Bedrock) with a config-file change (`litellm.yaml` model_list). The Terraform here is **not adapted** for air-gap; the pattern is.
+**Companion project:** `agentic-rag` demonstrates **model-layer substitution**: LiteLLM's provider abstraction points to self-hosted vLLM or Ollama (instead of Bedrock) with a config-file change (`litellm.yaml` model_list). The Terraform here is **not adapted** for air-gap; the pattern is.
 
 ### What Does NOT Map: Managed Services
 

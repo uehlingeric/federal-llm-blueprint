@@ -2,7 +2,7 @@
 
 The complete composition with production-shaped defaults: network, KMS, IAM, LLM gateway, vector store, document store, audit, and observability — all eight modules in a no-egress VPC, with the LiteLLM gateway as the running workload serving OpenAI-compatible completions from Bedrock.
 
-The [agentic-rag](https://github.com/uehlingeric/agentic-rag) application is the workload this stack is designed to host (RAG over the documents bucket + pgvector, answering through the gateway); its container integration lands post-v0.1.0. Until then the gateway is the workload, and the vector plane is proven with the [seed-script procedure](../../docs/verification/vector-proof.md).
+The `agentic-rag` application is the workload this stack is designed to host (RAG over the documents bucket + pgvector, answering through the gateway); its container integration lands post-v0.1.0. Until then the gateway is the workload, and the vector plane is proven with the [seed-script procedure](../../docs/verification/vector-proof.md).
 
 ## What This Deploys
 

@@ -183,7 +183,7 @@ Changes that touch `CONTROLS.md`, `docs/controls.yaml`, or control annotations i
 **Out of scope:**
 - Converting this into a fully-packaged ATO submission (it's a reference, not a compliance package)
 - Organization-specific policies or environment overrides
-- Application-layer guardrails or LLM-specific tuning (see the companion [agentic-rag](https://github.com/uehlingeric/agentic-rag) project)
+- Application-layer guardrails or LLM-specific tuning (see the companion `agentic-rag` project)
 - Multi-region active-active failover (single-region reference)
 
 If in doubt, open an issue to discuss before investing effort.
