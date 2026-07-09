@@ -2,6 +2,16 @@
 
 Operational scripts for the federal-llm-blueprint.
 
+## verify-teardown.sh
+
+**Purpose**: Post-destroy sweep confirming a `terraform destroy` left nothing billable. Read-only — list/describe/get calls only.
+
+```bash
+scripts/verify-teardown.sh -p <project> -e <environment> -r <region>
+```
+
+Prints one `RESIDUE` line per billable leftover (tagged resources, orphaned ENIs, RDS snapshots, log groups, S3 buckets, enabled KMS keys, secrets, ALBs, ECS clusters, SNS topics, alarms, dashboards, EventBridge rules, VPCs, endpoints, trails, Config recorders) and `INFO` lines for free-but-notable state (keys/secrets pending deletion, leftover Bedrock logging configuration, the sandbox self-signed cert). Exits 0 when residue count is zero, 1 otherwise, 2 on usage error. Tests: `scripts/tests/verify-teardown-test.sh`.
+
 ## seed-vectors.py
 
 **Purpose**: One-time proof-of-concept script validating that pgvector works end-to-end in the vector store. Demonstrates table creation, vector insertion, and cosine-similarity search.
