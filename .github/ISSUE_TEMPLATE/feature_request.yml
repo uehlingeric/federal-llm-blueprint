@@ -1,0 +1,40 @@
+name: Feature Request
+description: Propose a new feature or enhancement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the feature request. Please describe the problem and your proposed solution clearly.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem are you trying to solve? What is the use case?
+      placeholder: "Currently, the network module does not support..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Change
+      description: How would you like this feature to work? Provide examples or pseudo-code if helpful
+      placeholder: "Add a new variable `enable_nat_gateway` to the network module that..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: compliance_impact
+    attributes:
+      label: Compliance or Control Impact
+      description: "Does this change affect CONTROLS.md, docs/controls.yaml, or NIST 800-53 alignment? (Optional)"
+      placeholder: "This change aligns to SC-7 Boundary Protection by..."
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        **Note:** Out-of-scope features (FedRAMP ATO packaging, application-layer guardrails, multi-region failover) will be politely declined. See [CONTRIBUTING.md](../CONTRIBUTING.md#contributions-welcome) for scope guidance.
