@@ -1,7 +1,8 @@
 # Machine-readable control mapping for NIST 800-53 rev5.
 # Mirrors CONTROLS.md; consumed by scripts/check-control-refs.py.
-# This YAML holds the same facts as the document; OSCAL component-definition
-# generation is roadmap - future work will generate OSCAL from this source.
+# This YAML holds the same facts as the document; scripts/generate-oscal.py
+# renders it as an OSCAL component definition at
+# docs/oscal/component-definition.json (make oscal; CI runs make oscal-check).
 
 controls:
   - id: AC-2
@@ -861,7 +862,9 @@ controls:
       (feat, fix, docs, test, chore, ci). The check-controls gate
       (scripts/check-control-refs.py) validates that control ids annotated in
       modules/audit/main.tf local.config_rules stay synchronized with CONTROLS.md
-      and docs/controls.yaml and that every cited Terraform resource exists. Branch
+      and docs/controls.yaml and that every cited Terraform resource exists. The
+      oscal-check gate (scripts/generate-oscal.py --check) keeps the generated OSCAL
+      component definition synchronized with docs/controls.yaml. Branch
       protection and mandatory PR review are GitHub repository settings the deployer
       enables. Rollback is via git revert (audit trail preserved).
     resources:

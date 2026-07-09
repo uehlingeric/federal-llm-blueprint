@@ -240,7 +240,7 @@ The stack provides infrastructure-as-code baseline; the deployer enforces git-ba
 ### CM-3 — Configuration Change Control
 
 **Implementation Statement:**
-Change control flows through git: CI gates run on every push and pull request — terraform fmt/validate, tflint, checkov, tests, and docs-check (terraform-docs must reflect current code). Each commit follows Conventional Commits format (feat, fix, docs, test, chore, ci). The check-controls gate (scripts/check-control-refs.py) validates that control ids annotated in modules/audit/main.tf local.config_rules stay synchronized with CONTROLS.md and docs/controls.yaml and that every cited Terraform resource exists. Branch protection and mandatory PR review are GitHub repository settings the deployer enables. Rollback is via git revert (audit trail preserved in CloudTrail).
+Change control flows through git: CI gates run on every push and pull request — terraform fmt/validate, tflint, checkov, tests, and docs-check (terraform-docs must reflect current code). Each commit follows Conventional Commits format (feat, fix, docs, test, chore, ci). The check-controls gate (scripts/check-control-refs.py) validates that control ids annotated in modules/audit/main.tf local.config_rules stay synchronized with CONTROLS.md and docs/controls.yaml and that every cited Terraform resource exists. The oscal-check gate (scripts/generate-oscal.py --check) keeps the generated OSCAL component definition synchronized with docs/controls.yaml. Branch protection and mandatory PR review are GitHub repository settings the deployer enables. Rollback is via git revert (audit trail preserved in CloudTrail).
 
 **Implementing Resources:**
 - `.github/workflows/ci.yml` — CI gates (fmt, validate, tflint, checkov, test) block merge until passing.
@@ -517,10 +517,10 @@ The following controls or aspects are NOT implemented by this stack and are Cust
 
 ## How to Use This Document
 
-1. **For an SSP:** This document is a skeleton; copy the control statements and implementing resources into your System Security Plan.
+1. **For an SSP:** This document is a skeleton; copy the control statements and implementing resources into your System Security Plan. SSP tooling that consumes OSCAL can ingest the same mapping from `docs/oscal/component-definition.json`, an OSCAL 1.1.3 component definition generated from `docs/controls.yaml` (`make oscal`; validated against the NIST OSCAL component-definition schema).
 2. **For ATO:** Deployer must provide deployed-evidence proofs (see docs/verification/ for examples). Each control requires a transcript showing the evidence (CloudTrail log, Config rule compliance, etc.).
 3. **For Audits:** Reference the YAML file (`docs/controls.yaml`) and each Terraform resource path to verify implementation. Spot-check: run grep to confirm each cited resource exists.
-4. **For Maintenance:** If you modify Terraform code (e.g., add a new Config rule, change KMS key policy), update the mapping to reflect the change. `make check-controls` (scripts/check-control-refs.py) enforces consistency between code annotations, this document, and docs/controls.yaml in CI.
+4. **For Maintenance:** If you modify Terraform code (e.g., add a new Config rule, change KMS key policy), update the mapping to reflect the change. `make check-controls` (scripts/check-control-refs.py) enforces consistency between code annotations, this document, and docs/controls.yaml in CI; `make oscal-check` (scripts/generate-oscal.py --check) enforces that the generated OSCAL component definition stays current.
 
 ---
 
