@@ -85,6 +85,11 @@ aws_safe() {
 # aws CLI auto-paginates by default via NextToken; no explicit pagination loop needed.
 # KMS keys and Secrets Manager secrets keep their tags while pending deletion,
 # so they are skipped here and handled by the state-aware checks 6 and 7.
+# NOTE: --output text prints scalar-list query results TAB-SEPARATED ON ONE
+# LINE, so every single-column pipeline below runs through tr '\t' '\n' —
+# without it a while-read loop sees one concatenated line and prefix matches
+# silently miss everything after the first item. (The secrets check reads
+# two-column rows, which text output already prints one per line.)
 
 while IFS= read -r arn; do
   if [[ -n "$arn" ]]; then
@@ -102,7 +107,7 @@ done < <(
       "Key=Project,Values=$PROJECT" \
       "Key=Environment,Values=$ENVIRONMENT" \
     --output text \
-    --query 'ResourceTagMappingList[*].ResourceARN' 2>/dev/null || true
+    --query 'ResourceTagMappingList[*].ResourceARN' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ============================================================================
@@ -123,7 +128,7 @@ done < <(
     --region "$REGION" \
     --filters "Name=status,Values=available" \
     --output text \
-    --query 'NetworkInterfaces[*].NetworkInterfaceId' 2>/dev/null || true
+    --query 'NetworkInterfaces[*].NetworkInterfaceId' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ============================================================================
@@ -141,7 +146,7 @@ done < <(
     aws rds describe-db-instances \
     --region "$REGION" \
     --output text \
-    --query 'DBInstances[*].DBInstanceIdentifier' 2>/dev/null || true
+    --query 'DBInstances[*].DBInstanceIdentifier' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # Manual DB Snapshots (client-side filter on snapshot identifier)
@@ -156,7 +161,7 @@ done < <(
     --region "$REGION" \
     --snapshot-type manual \
     --output text \
-    --query 'DBSnapshots[*].DBSnapshotIdentifier' 2>/dev/null || true
+    --query 'DBSnapshots[*].DBSnapshotIdentifier' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # Automated DB Snapshots — the JMESPath filter matches on DBInstanceIdentifier;
@@ -172,7 +177,7 @@ done < <(
     --region "$REGION" \
     --snapshot-type automated \
     --output text \
-    --query "DBSnapshots[?contains(DBInstanceIdentifier, '$PROJECT-$ENVIRONMENT')].DBSnapshotIdentifier" 2>/dev/null || true
+    --query "DBSnapshots[?contains(DBInstanceIdentifier, '$PROJECT-$ENVIRONMENT')].DBSnapshotIdentifier" 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ============================================================================
@@ -208,7 +213,7 @@ for prefix in "${LOG_GROUP_PREFIXES[@]}"; do
       --region "$REGION" \
       --log-group-name-prefix "$prefix" \
       --output text \
-      --query 'logGroups[*].logGroupName' 2>/dev/null || true
+      --query 'logGroups[*].logGroupName' 2>/dev/null | tr '\t' '\n' || true
   )
 done
 
@@ -244,7 +249,7 @@ done < <(
     aws s3api list-buckets \
     --region "$REGION" \
     --output text \
-    --query 'Buckets[*].Name' 2>/dev/null || true
+    --query 'Buckets[*].Name' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ============================================================================
@@ -294,7 +299,7 @@ done < <(
     aws kms list-aliases \
     --region "$REGION" \
     --output text \
-    --query 'Aliases[*].AliasName' 2>/dev/null || true
+    --query 'Aliases[*].AliasName' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ============================================================================
@@ -336,7 +341,7 @@ done < <(
     aws elbv2 describe-load-balancers \
     --region "$REGION" \
     --output text \
-    --query "LoadBalancers[?Name=='$PROJECT-$ENVIRONMENT-gateway'].LoadBalancerArn" 2>/dev/null || true
+    --query "LoadBalancers[?Name=='$PROJECT-$ENVIRONMENT-gateway'].LoadBalancerArn" 2>/dev/null | tr '\t' '\n' || true
 )
 
 # Target Groups (name_prefix = gw in ecs-llm-gateway module, but ARN suffix pattern is more reliable)
@@ -350,7 +355,7 @@ done < <(
     aws elbv2 describe-target-groups \
     --region "$REGION" \
     --output text \
-    --query 'TargetGroups[*].TargetGroupArn' 2>/dev/null || true
+    --query 'TargetGroups[*].TargetGroupArn' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ECS Clusters with matching name
@@ -364,7 +369,7 @@ done < <(
     aws ecs list-clusters \
     --region "$REGION" \
     --output text \
-    --query 'clusterArns[*]' 2>/dev/null || true
+    --query 'clusterArns[*]' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # SNS Topics with matching name
@@ -378,7 +383,7 @@ done < <(
     aws sns list-topics \
     --region "$REGION" \
     --output text \
-    --query 'Topics[*].TopicArn' 2>/dev/null || true
+    --query 'Topics[*].TopicArn' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ============================================================================
@@ -396,7 +401,7 @@ done < <(
     aws cloudwatch describe-alarms \
     --region "$REGION" \
     --output text \
-    --query 'MetricAlarms[*].AlarmName' 2>/dev/null || true
+    --query 'MetricAlarms[*].AlarmName' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # CloudWatch Dashboards with project-environment prefix
@@ -410,7 +415,7 @@ done < <(
     aws cloudwatch list-dashboards \
     --region "$REGION" \
     --output text \
-    --query 'DashboardEntries[*].DashboardName' 2>/dev/null || true
+    --query 'DashboardEntries[*].DashboardName' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # EventBridge Rules with matching name
@@ -424,7 +429,7 @@ done < <(
     aws events list-rules \
     --region "$REGION" \
     --output text \
-    --query 'Rules[*].Name' 2>/dev/null || true
+    --query 'Rules[*].Name' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # VPCs with matching tag
@@ -441,7 +446,7 @@ done < <(
       "Name=tag:Project,Values=$PROJECT" \
       "Name=tag:Environment,Values=$ENVIRONMENT" \
     --output text \
-    --query 'Vpcs[*].VpcId' 2>/dev/null || true
+    --query 'Vpcs[*].VpcId' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # VPC Endpoints with matching tags (usually clean but check)
@@ -458,7 +463,7 @@ done < <(
       "Name=tag:Project,Values=$PROJECT" \
       "Name=tag:Environment,Values=$ENVIRONMENT" \
     --output text \
-    --query 'VpcEndpoints[*].VpcEndpointId' 2>/dev/null || true
+    --query 'VpcEndpoints[*].VpcEndpointId' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # CloudTrail Trails with matching name
@@ -472,7 +477,7 @@ done < <(
     aws cloudtrail list-trails \
     --region "$REGION" \
     --output text \
-    --query 'Trails[*].Name' 2>/dev/null || true
+    --query 'Trails[*].Name' 2>/dev/null | tr '\t' '\n' || true
 )
 
 # AWS Config Recorder with matching name
@@ -503,7 +508,7 @@ done < <(
     aws acm list-certificates \
     --region "$REGION" \
     --output text \
-    --query "CertificateSummaryList[?DomainName=='$PROJECT-$ENVIRONMENT-gateway.internal'].CertificateArn" 2>/dev/null || true
+    --query "CertificateSummaryList[?DomainName=='$PROJECT-$ENVIRONMENT-gateway.internal'].CertificateArn" 2>/dev/null | tr '\t' '\n' || true
 )
 
 # ============================================================================

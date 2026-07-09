@@ -154,10 +154,47 @@ STUBEOF
   echo ""
 }
 
+test_multi_item_single_line() {
+  echo "=== Scenario: tab-separated multi-item output (must not hide later items) ==="
+  local test_dir
+  test_dir=$(mktemp -d)
+  trap "rm -rf '$test_dir'" RETURN
+
+  # Real aws CLI behavior: scalar-list --query results print tab-separated on
+  # ONE line; the matching bucket is deliberately NOT first
+  cat > "$test_dir/aws" << 'STUBEOF'
+#!/bin/bash
+SERVICE="$1"
+OPERATION="$2"
+[[ "$SERVICE" == "s3api" ]] && [[ "$OPERATION" == "list-buckets" ]] && printf 'aaa-unrelated-bucket\ttest-project-test-env-alb-logs-123456789012\tzzz-other\n'
+exit 0
+STUBEOF
+  chmod +x "$test_dir/aws"
+
+  local output exit_code
+  if output=$(PATH="$test_dir:$PATH" bash "$VERIFY_SCRIPT" -p test-project -e test-env -r us-east-1 2>/dev/null); then
+    exit_code=0
+  else
+    exit_code=$?
+  fi
+
+  echo "$output" | grep "RESIDUE s3" || true
+
+  if [[ $exit_code -eq 1 ]] && echo "$output" | grep -q "RESIDUE s3 test-project-test-env-alb-logs-123456789012"; then
+    echo "PASS"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: expected the mid-line bucket to be detected as residue"
+    FAIL=$((FAIL + 1))
+  fi
+  echo ""
+}
+
 test_clean
 test_dirty
 test_pending
 test_aws_failure
+test_multi_item_single_line
 
 echo "============================================="
 echo "Results: PASS=$PASS FAIL=$FAIL"
