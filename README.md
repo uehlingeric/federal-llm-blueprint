@@ -30,7 +30,7 @@ flowchart TB
 
 - **Modules:** network, kms, iam, ecs-llm-gateway, vector-store, document-store, audit, observability
 - **Modes:** `no_egress = true` (VPC-endpoint-only, the GovCloud/air-gap posture) or standard private
-- **Compliance:** [CONTROLS.md](CONTROLS.md) maps every module to NIST 800-53 rev5 controls (AC, AU, CM, IA, RA, SC, SI), mirrored machine-readably in [docs/controls.yaml](docs/controls.yaml); [threat model](docs/threat-model.md) and [air-gap/GovCloud guide](docs/airgap-guide.md) included
+- **Compliance:** [CONTROLS.md](CONTROLS.md) maps every module to NIST 800-53 rev5 controls (AC, AU, CM, IA, RA, SC, SI), mirrored machine-readably in [docs/controls.yaml](docs/controls.yaml) and generated as an [OSCAL component definition](docs/oscal/component-definition.json) for SSP tooling; [threat model](docs/threat-model.md) and [air-gap/GovCloud guide](docs/airgap-guide.md) included
 - **Proof:** the full-stack example deploys [agentic-rag](https://github.com/uehlingeric/agentic-rag) as the workload
 
 ## Build Roadmap

@@ -80,8 +80,9 @@ jobs:
           python-version: '3.11'
       - run: pip install checkov==3.3.6
       - run: make checkov
-      # checkov pulls in PyYAML, which the control-mapping checker needs
+      # checkov pulls in PyYAML, which the control-mapping and OSCAL checks need
       - run: make check-controls
+      - run: make oscal-check
 
   docs:
     runs-on: ubuntu-latest
