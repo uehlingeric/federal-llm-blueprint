@@ -128,10 +128,49 @@ resource "aws_ecs_task_definition" "gateway" {
 
   container_definitions = jsonencode([
     {
+      # Fargate bind mounts surface root-owned 0755, so the non-root gateway
+      # user cannot write its materialized config. This throwaway init
+      # container (same image — no extra mirror in no-egress mode) restores
+      # the image's 1777 mode on the volume, then exits; the gateway container
+      # depends on its SUCCESS. This is the AWS-documented pattern for
+      # non-root writable volumes on Fargate.
+      name       = "tmp-init"
+      image      = var.container_image
+      essential  = false
+      user       = "0"
+      entryPoint = ["sh", "-c"]
+      command    = ["chmod 1777 /tmp"]
+
+      mountPoints = [
+        {
+          containerPath = "/tmp"
+          sourceVolume  = "tmp"
+          readOnly      = false
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.gateway.name
+          "awslogs-region"        = data.aws_region.current.region
+          "awslogs-stream-prefix" = "tmp-init"
+        }
+      }
+    },
+    {
       name      = "gateway"
       image     = var.container_image
       essential = true
       user      = var.container_user
+
+      # Gate on the volume-permission init container having succeeded
+      dependsOn = [
+        {
+          containerName = "tmp-init"
+          condition     = "SUCCESS"
+        }
+      ]
 
       # Port mapping: container listens on var.container_port (default 4000)
       portMappings = [
@@ -262,6 +301,29 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_service" {
     var.tags,
     {
       Name = "${local.name_prefix}-gateway-alb-to-svc"
+    }
+  )
+}
+
+# App SG: Egress to the ALB on 443. The gateway exists to be called by
+# in-VPC workloads, which run in the app SG — but the network module's app SG
+# only grants egress to VPC endpoints and the vector store, so without this
+# rule no app-tier client can reach the ALB at all (found in the first live
+# full-stack proof). Lives here, not in network: this module owns the ALB SG.
+resource "aws_vpc_security_group_egress_rule" "app_to_alb" {
+  security_group_id = var.app_security_group_id
+
+  description                  = "Allow app-tier workloads to reach the gateway ALB"
+  from_port                    = 443
+  to_port                      = 443
+  ip_protocol                  = "tcp"
+  referenced_security_group_id = aws_security_group.alb.id
+
+  tags = merge(
+    local.common_tags,
+    var.tags,
+    {
+      Name = "${local.name_prefix}-gateway-app-to-alb"
     }
   )
 }

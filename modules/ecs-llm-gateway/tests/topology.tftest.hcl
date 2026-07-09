@@ -150,6 +150,13 @@ run "security_groups_and_rules" {
     condition     = aws_vpc_security_group_egress_rule.alb_to_service.from_port == 4000
     error_message = "ALB SG must have egress rule to service SG on container port"
   }
+
+  # Assert: app SG gains egress to the ALB on 443 (in-VPC clients must be able
+  # to call the gateway; the network module's app SG has no such rule itself)
+  assert {
+    condition     = aws_vpc_security_group_egress_rule.app_to_alb.from_port == 443 && aws_vpc_security_group_egress_rule.app_to_alb.to_port == 443
+    error_message = "App SG must have egress rule to the ALB SG on 443"
+  }
 }
 
 run "service_deployment_and_circuit_breaker" {

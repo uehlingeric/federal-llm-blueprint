@@ -144,53 +144,79 @@ run "hardening_checks" {
 # Container-level hardening lives inside the jsonencode'd container_definitions string,
 # which is unknown at plan time (it interpolates computed ARNs). A mocked apply resolves
 # those, letting us decode and assert on the actual container definition. No AWS calls.
+# Index 0 is the tmp-init volume-permission container; index 1 is the gateway.
 run "container_definition_hardening" {
   command = apply
 
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].readonlyRootFilesystem == true
-    error_message = "Container must set readonlyRootFilesystem = true"
+    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].readonlyRootFilesystem == true
+    error_message = "Gateway container must set readonlyRootFilesystem = true"
   }
 
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].user == "1000"
-    error_message = "Container must run as the non-root user from var.container_user"
+    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].user == "1000"
+    error_message = "Gateway container must run as the non-root user from var.container_user"
   }
 
   # privileged must not be set at all (Fargate rejects it; absence is the hardened state)
   assert {
-    condition     = !can(jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].privileged)
-    error_message = "Container definition must not set the privileged flag"
+    condition     = !can(jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].privileged)
+    error_message = "Gateway container definition must not set the privileged flag"
   }
 
   assert {
     condition = length([
-      for m in jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].mountPoints :
+      for m in jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].mountPoints :
       m if m.containerPath == "/tmp" && m.sourceVolume == "tmp" && m.readOnly == false
     ]) == 1
-    error_message = "Container must mount the writable tmp ephemeral volume at /tmp"
+    error_message = "Gateway container must mount the writable tmp ephemeral volume at /tmp"
   }
 
   assert {
     condition = toset([
-      for s in jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].secrets : s.name
+      for s in jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].secrets : s.name
     ]) == toset(["LITELLM_CONFIG", "LITELLM_MASTER_KEY"])
-    error_message = "Container secrets must inject exactly LITELLM_CONFIG and LITELLM_MASTER_KEY"
+    error_message = "Gateway container secrets must inject exactly LITELLM_CONFIG and LITELLM_MASTER_KEY"
   }
 
   assert {
-    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].image == var.container_image
-    error_message = "Container image must be exactly the digest-pinned var.container_image"
+    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].image == var.container_image
+    error_message = "Gateway container image must be exactly the digest-pinned var.container_image"
   }
 
   # The entrypoint override materializes config to /tmp and exec's litellm as PID 1
   assert {
-    condition     = can(regex("exec litellm --config /tmp/config.yaml", jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].command[0]))
-    error_message = "Container command must exec litellm against the materialized /tmp/config.yaml"
+    condition     = can(regex("exec litellm --config /tmp/config.yaml", jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].command[0]))
+    error_message = "Gateway container command must exec litellm against the materialized /tmp/config.yaml"
   }
 
   assert {
-    condition     = can(regex("/health/liveliness", jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].healthCheck.command[1]))
-    error_message = "Container health check must probe /health/liveliness"
+    condition     = can(regex("/health/liveliness", jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].healthCheck.command[1]))
+    error_message = "Gateway container health check must probe /health/liveliness"
+  }
+
+  # tmp-init: Fargate bind mounts are root-owned 0755, so a throwaway root
+  # container restores 1777 on the volume before the non-root gateway starts
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].name == "tmp-init" && jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].essential == false
+    error_message = "tmp-init container must exist at index 0 and be non-essential"
+  }
+
+  assert {
+    condition     = jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].command[0] == "chmod 1777 /tmp"
+    error_message = "tmp-init must do exactly one thing: chmod 1777 the tmp volume"
+  }
+
+  assert {
+    condition     = !can(jsondecode(aws_ecs_task_definition.gateway.container_definitions)[0].secrets)
+    error_message = "tmp-init must not receive any secrets"
+  }
+
+  assert {
+    condition = length([
+      for d in jsondecode(aws_ecs_task_definition.gateway.container_definitions)[1].dependsOn :
+      d if d.containerName == "tmp-init" && d.condition == "SUCCESS"
+    ]) == 1
+    error_message = "Gateway container must depend on tmp-init SUCCESS"
   }
 }

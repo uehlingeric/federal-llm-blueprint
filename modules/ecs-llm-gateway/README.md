@@ -260,7 +260,7 @@ All alarms are created but only wired to an SNS topic if `alarm_topic_arn` is pr
 The ECS task definition is hardened per federal compliance requirements:
 
 - **Non-root user**: Container runs as UID `1000` by default (configurable via `container_user`; must not be root or UID 0).
-- **Read-only root filesystem**: The root filesystem is read-only; `/tmp` is writable via an ephemeral volume.
+- **Read-only root filesystem**: The root filesystem is read-only; `/tmp` is writable via an ephemeral volume. Fargate surfaces that volume root-owned with mode `0755`, so a non-essential `tmp-init` container (same image, root, `chmod 1777 /tmp`, exits) runs first and the gateway container `dependsOn` its `SUCCESS` — the AWS-documented pattern for non-root writable volumes on Fargate.
 - **Digest-pinned image**: Container image must be specified with a `@sha256:` digest hash, ensuring reproducible deployments.
 - **No privileged mode**: The `privileged` flag is not set (and Fargate would reject it anyway).
 - **Health checks**: Liveness probe checks `/health/liveliness` endpoint every 30 seconds.
@@ -314,6 +314,7 @@ No modules.
 | [aws_security_group.service](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group) | resource |
 | [aws_ssm_parameter.litellm_config](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ssm_parameter) | resource |
 | [aws_vpc_security_group_egress_rule.alb_to_service](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_egress_rule) | resource |
+| [aws_vpc_security_group_egress_rule.app_to_alb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_egress_rule) | resource |
 | [aws_vpc_security_group_ingress_rule.alb_https](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_ingress_rule) | resource |
 | [aws_vpc_security_group_ingress_rule.service_from_alb](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/vpc_security_group_ingress_rule) | resource |
 | [tls_private_key.self_signed](https://registry.terraform.io/providers/hashicorp/tls/latest/docs/resources/private_key) | resource |
