@@ -190,6 +190,9 @@ done < <(
 # - Bedrock: /aws/{project}-{environment}/bedrock-invocations (audit module, count-guarded)
 # - Flow Logs: /aws/vpc/flow-logs/{project}-{environment} (network module)
 # - Log factory: /aws/{project}-{environment}/{key} (observability module)
+# - Container Insights: /aws/ecs/containerinsights/{project}-{environment}-gateway/*
+#   (AUTO-CREATED by ECS outside Terraform when containerInsights is enabled;
+#   survives destroy — found live 2026-07-09)
 
 declare -a LOG_GROUP_PREFIXES=(
   "/aws/rds/instance/${PROJECT}-${ENVIRONMENT}-vector"
@@ -198,6 +201,7 @@ declare -a LOG_GROUP_PREFIXES=(
   "/aws/${PROJECT}-${ENVIRONMENT}/bedrock-invocations"
   "/aws/vpc/flow-logs/${PROJECT}-${ENVIRONMENT}"
   "/aws/${PROJECT}-${ENVIRONMENT}/"
+  "/aws/ecs/containerinsights/${PROJECT}-${ENVIRONMENT}-gateway"
 )
 
 # Check each log group prefix
