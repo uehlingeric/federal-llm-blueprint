@@ -43,16 +43,16 @@ tflint:
 	tflint --recursive --config "$(CURDIR)/.tflint.hcl"
 
 checkov:
-	checkov --config-file .checkov.yaml
+	uv run --group dev checkov --config-file .checkov.yaml
 
 check-controls:
-	python3 scripts/check-control-refs.py
+	uv run scripts/check-control-refs.py
 
 oscal:
-	python3 scripts/generate-oscal.py
+	uv run scripts/generate-oscal.py
 
 oscal-check:
-	python3 scripts/generate-oscal.py --check
+	uv run scripts/generate-oscal.py --check
 
 docs:
 	@for d in $(wildcard modules/*); do \

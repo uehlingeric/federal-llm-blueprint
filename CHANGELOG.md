@@ -4,9 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**Note:** This project is in pre-1.0 phase. Until 1.0.0 is released, minor version changes (`0.x.y`) may introduce breaking changes to module interfaces. See [CONTRIBUTING.md](CONTRIBUTING.md) for version-floor guarantees.
-
 ## [Unreleased]
+
+## [1.0.0] - 2026-07-12
+
+### Changed
+
+- Python tooling (control-mapping checks, OSCAL generation, Checkov) now runs through uv: `pyproject.toml` + `uv.lock`, `uv run` in the Makefile and CI
+- Module interfaces are now covered by SemVer: breaking changes to module variables or outputs bump the major version
+
+### Removed
+
+- `CONTRIBUTING.md`, issue templates, and the pull-request template — the project is a reference architecture showcase, not a contribution-seeking package
 
 ## [0.1.0] - 2026-07-09
 
@@ -66,7 +75,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **docs/conventions.md**: Resource naming, tagging, IAM policy patterns, version pinning, partition safety, Checkov skip discipline
 - **docs/architecture.md**: Five-plane design, module responsibility matrix, interface contracts, no-egress mode invariants, data flows with sequence diagrams, state strategy
-- **CONTRIBUTING.md**: Development setup, CI gate explanation, test conventions, commit format, compliance-language rules
+- **CONTRIBUTING.md** (removed in 1.0.0): development setup, CI gates, test conventions, commit format
 - **SECURITY.md**: Vulnerability reporting via GitHub private vulnerability reporting, supported-version policy, scope boundaries
 - **README.md**: Positioning, architecture diagram, control-coverage summary, quickstart, module table
 

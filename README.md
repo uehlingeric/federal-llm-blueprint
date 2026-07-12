@@ -13,7 +13,7 @@ flowchart TB
     subgraph VPC ["VPC — zero IGW/NAT in no-egress mode"]
         subgraph Private ["Private subnets (2–3 AZs)"]
             ALB[Internal ALB<br/>TLS] --> GW[LLM Gateway<br/>ECS Fargate · LiteLLM]
-            APP[RAG workload<br/>agentic-rag · post-v0.1.0]:::planned -.-> ALB
+            APP[RAG workload<br/>agentic-rag · planned]:::planned -.-> ALB
             DB[(RDS Postgres 16<br/>+ pgvector)]
         end
         EP[11 interface endpoints:<br/>Bedrock · ECR · KMS · Logs · SSM · Secrets · ECS · STS]
