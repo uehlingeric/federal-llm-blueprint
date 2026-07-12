@@ -1,6 +1,5 @@
 # Week 5 — Data Layer: Vector Store + Document Store
 
-**Dates:** Mon Aug 3 – Sun Aug 9, 2026
 **Objective:** The stateful modules: RDS Postgres with pgvector for embeddings, and an S3 document store with the full compliance posture (versioning, access logging, lifecycle, object lock option). By Sunday both modules pass their tests and a seed script proves vector search works end to end inside the VPC.
 
 ## Exit Criteria

@@ -1,6 +1,5 @@
 # Week 6 — Audit & Observability: CloudTrail, Config, Alarms
 
-**Dates:** Mon Aug 10 – Sun Aug 16, 2026
 **Objective:** The plane that makes the stack *auditable* rather than just secure: CloudTrail with integrity validation, AWS Config rules mirroring the repo's own standards, centralized encrypted logging, and an alarm baseline. By Sunday an auditor-persona walkthrough can answer "who did what, when, to which resource" from deployed evidence.
 
 ## Exit Criteria

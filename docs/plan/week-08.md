@@ -1,6 +1,5 @@
 # Week 8 — Launch: Full-Stack Example, Cost Doc, v0.1.0 Public
 
-**Dates:** Mon Aug 24 – Sun Aug 30, 2026
 **Objective:** Ship it. The full-stack example deploys everything — network through audit — with agentic-rag as the running workload, a documented cost picture, a README rewritten for the 2-minute reviewer, and the repo flipped public alongside agentic-rag as the pair of pinned flagships.
 
 ## Exit Criteria

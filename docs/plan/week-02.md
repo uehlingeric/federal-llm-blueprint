@@ -1,6 +1,5 @@
 # Week 2 — Network Module: VPC, Endpoints, No-Egress Mode
 
-**Dates:** Mon Jul 13 – Sun Jul 19, 2026
 **Objective:** The module everything else sits inside. A VPC with private-subnet architecture, the full set of VPC interface/gateway endpoints an LLM stack needs, and a provable `no_egress` mode — no IGW, no NAT, endpoint-only connectivity. By Sunday the minimal example applies cleanly and the no-egress claim is demonstrated, not asserted.
 
 ## Exit Criteria

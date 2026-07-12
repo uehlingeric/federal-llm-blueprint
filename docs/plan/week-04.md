@@ -1,6 +1,5 @@
 # Week 4 — Compute: ECS Fargate LLM Gateway
 
-**Dates:** Mon Jul 27 – Sun Aug 2, 2026
 **Objective:** The compute pattern: an ECS Fargate service running an LLM gateway (LiteLLM proxy as reference container) behind an internal ALB, hardened to the level a federal reviewer expects. By Sunday the minimal example serves an OpenAI-compatible completion endpoint inside the no-egress VPC via Bedrock.
 
 ## Exit Criteria

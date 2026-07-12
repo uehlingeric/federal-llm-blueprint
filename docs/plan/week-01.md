@@ -1,6 +1,5 @@
 # Week 1 — Foundations: Standards, Skeleton, CI, Architecture Doc
 
-**Dates:** Mon Jul 6 – Sun Jul 12, 2026
 **Objective:** Every structural decision made and enforced before any real infrastructure code: module conventions, tagging/naming standards, state strategy, CI gates, and the architecture document that the next seven weeks implement. By Sunday, an empty-but-valid module skeleton passes a CI pipeline that would fail bad code.
 
 ## Exit Criteria

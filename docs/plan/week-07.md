@@ -1,6 +1,5 @@
 # Week 7 — Compliance Documentation: CONTROLS.md, Threat Model, Air-Gap Guide
 
-**Dates:** Mon Aug 17 – Sun Aug 23, 2026
 **Objective:** The documentation that makes this a *federal* blueprint instead of a hardened AWS stack: a NIST 800-53 rev5 control mapping with per-module implementation statements, a threat model, and the air-gap/GovCloud deployment guide. By Sunday a security assessor could use CONTROLS.md as the skeleton of a system security plan section.
 
 ## Exit Criteria

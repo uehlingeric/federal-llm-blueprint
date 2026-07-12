@@ -1,6 +1,5 @@
 # Week 3 — Security Core: KMS, IAM/RBAC, Secrets
 
-**Dates:** Mon Jul 20 – Sun Jul 26, 2026
 **Objective:** The encryption and identity backbone every other module consumes: customer-managed KMS keys with rotation, least-privilege IAM roles with permission boundaries, and a secrets pattern. By Sunday, checkov's IAM/KMS rule families pass with zero skips and the RBAC model is documented as a table a security reviewer could assess.
 
 ## Exit Criteria
